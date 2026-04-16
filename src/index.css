@@ -1,0 +1,62 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap');
+
+@theme {
+  --font-sans: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Space Grotesk", ui-monospace, SFMono-Regular, monospace;
+
+  --color-feldgrau: #4E5B52;
+  --color-anthrazit: #1e201e;
+  --color-schwarz: #0d0f0d;
+  --color-akzent-rot: #830000;
+}
+
+@layer base {
+  body {
+    @apply bg-schwarz text-feldgrau font-sans selection:bg-akzent-rot selection:text-white;
+    background-image: radial-gradient(circle at 50% 50%, rgba(78, 91, 82, 0.05) 0%, transparent 100%);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply uppercase tracking-widest font-bold;
+  }
+}
+
+@layer components {
+  .scanlines {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+      to bottom,
+      rgba(18, 16, 16, 0) 50%,
+      rgba(0, 0, 0, 0.1) 50%
+    );
+    background-size: 100% 4px;
+    z-index: 50;
+    pointer-events: none;
+    opacity: 0.3;
+  }
+
+  .grain {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+    opacity: 0.05;
+    z-index: 40;
+    pointer-events: none;
+  }
+
+  .tactical-border {
+    @apply border border-feldgrau;
+  }
+
+  .stepped-transition {
+    transition-timing-function: steps(1, end);
+  }
+}
