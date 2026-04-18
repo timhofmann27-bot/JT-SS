@@ -1,0 +1,4 @@
+jt-mp3.example.com {
+  encode zstd gzip
+  reverse_proxy jt-mp3:3001
+}

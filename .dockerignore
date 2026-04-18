@@ -1,0 +1,13 @@
+.git
+.sixth
+node_modules
+dist
+coverage
+media
+.env
+.env.*
+!.env.example
+*.log
+npm-debug.log*
+Dockerfile
+docker-compose.yml

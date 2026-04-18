@@ -1,6 +1,10 @@
 node_modules/
 build/
 dist/
+media/*
+!media/.gitkeep
+data/*
+!data/.gitkeep
 coverage/
 .DS_Store
 *.log

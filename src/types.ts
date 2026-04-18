@@ -1,16 +1,45 @@
-export interface FileEntry {
+export interface ApiFile {
   id: string;
   name: string;
-  type: 'mp3' | 'mp4';
-  size: string;
-  date: string;
+  title: string;
+  artist?: string;
+  album?: string;
+  kind: 'audio' | 'video';
+  mimeType: string;
+  size: number;
+  sizeLabel: string;
+  duration?: number;
+  durationLabel?: string;
+  hasArtwork: boolean;
+  modifiedAt: string;
 }
 
-export interface Group {
+export interface ApiStatus {
+  roomName: string;
+  host: string;
+  maxPeers: number;
+  mediaPath: string;
+  dataPath: string;
+  livePeers: number;
+}
+
+export interface QueueItem {
   id: string;
-  name: string;
-  status: 'Verschlüsselt' | 'Offen';
-  members: number;
+  fileId: string;
+  addedAt: string;
+  file: ApiFile;
 }
 
-export type View = 'login' | 'dashboard' | 'groups';
+export interface RoomState {
+  likedIds: string[];
+  queue: QueueItem[];
+  updatedAt: string;
+}
+
+export interface UploadState {
+  active: boolean;
+  progress: number;
+  message: string;
+}
+
+export type View = 'library' | 'queue' | 'upload' | 'room';
