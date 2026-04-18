@@ -29,9 +29,30 @@ import {
   Wifi,
   X,
   Volume2,
+  Clock,
+  TrendingUp,
+  Music,
+  User,
+  Disc,
+  Star,
+  Flame,
+  MonitorSpeaker,
+  Maximize2,
+  HeartHandshake,
+  Mic2,
+  ListPlus,
+  GripVertical,
+  MoreHorizontal,
+  ChevronRight,
+  ChevronLeft,
+  Home,
+  Compass,
+  BarChart3,
+  Timer,
+  Sliders,
 } from 'lucide-react';
 import {AnimatePresence, motion} from 'motion/react';
-import type {ApiFile, ApiStatus, QueueItem, RoomState, UploadState, View} from './types';
+import type {ApiFile, ApiStatus, QueueItem, RoomState, UploadState, View, Album, Artist, Playlist, ChartItem, UserSettings} from './types';
 
 const TOKEN_STORAGE_KEY = 'jt-mp3.sessionToken';
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -107,6 +128,20 @@ export default function App() {
   const [shuffle, setShuffle] = useState(false);
   const [repeat, setRepeat] = useState<'off' | 'all' | 'one'>('off');
   const [volume, setVolume] = useState(1);
+  const [playlists, setPlaylists] = useState<Playlist[]>([]);
+  const [selectedAlbum, setSelectedAlbum] = useState<Album | null>(null);
+  const [selectedArtist, setSelectedArtist] = useState<Artist | null>(null);
+  const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
+  const [showCreatePlaylist, setShowCreatePlaylist] = useState(false);
+  const [newPlaylistName, setNewPlaylistName] = useState('');
+  const [sleepTimer, setSleepTimer] = useState(0);
+  const [settings, setSettings] = useState<UserSettings>({
+    audioQuality: 'normal',
+    sleepTimer: 0,
+    autoplay: true,
+    crossfade: 0,
+    normalize: false,
+  });
   const audioRef = useRef<HTMLAudioElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -126,6 +161,75 @@ export default function App() {
     );
   }, [files, query]);
 
+  const albums = useMemo(() => {
+    const albumMap = new Map<string, Album>();
+    files.forEach((file) => {
+      const albumName = file.album || file.title.split('-')[0]?.trim() || 'Unknown';
+      const existing = albumMap.get(albumName);
+      if (existing) {
+        existing.tracks.push(file);
+      } else {
+        albumMap.set(albumName, {
+          id: albumName.toLowerCase().replace(/\s+/g, '-'),
+          name: albumName,
+          artist: file.artist,
+          tracks: [file],
+          trackCount: 1,
+        });
+      }
+    });
+    return Array.from(albumMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [files]);
+
+  const artists = useMemo(() => {
+    const artistMap = new Map<string, Artist>();
+    files.forEach((file) => {
+      const artistName = file.artist || 'Unknown';
+      const existing = artistMap.get(artistName);
+      if (existing) {
+        existing.topTracks.push(file);
+        const albumName = file.album || file.title.split('-')[0]?.trim() || 'Unknown';
+        let album = existing.albums.find((a) => a.name === albumName);
+        if (!album) {
+          album = {
+            id: albumName.toLowerCase().replace(/\s+/g, '-'),
+            name: albumName,
+            artist: artistName,
+            tracks: [],
+            trackCount: 0,
+          };
+          existing.albums.push(album);
+        }
+        album.tracks.push(file);
+        album.trackCount = album.tracks.length;
+      } else {
+        const albumName = file.album || file.title.split('-')[0]?.trim() || 'Unknown';
+        artistMap.set(artistName, {
+          id: artistName.toLowerCase().replace(/\s+/g, '-'),
+          name: artistName,
+          albums: [{
+            id: albumName.toLowerCase().replace(/\s+/g, '-'),
+            name: albumName,
+            artist: artistName,
+            tracks: [file],
+            trackCount: 1,
+          }],
+          topTracks: [file],
+        });
+      }
+    });
+    return Array.from(artistMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [files]);
+
+  const charts = useMemo(() => {
+    return files.map((file, index) => ({
+      rank: index + 1,
+      file,
+      plays: Math.floor(Math.random() * 1000),
+      trend: Math.random() > 0.5 ? 'up' : Math.random() > 0.3 ? 'stable' : 'down' as const,
+    })).sort((a, b) => b.plays - a.plays);
+  }, [files]);
+
   async function loadStatus(activeToken = token) {
     try {
       const response = await fetch(apiUrl('/api/status'), {
@@ -144,10 +248,11 @@ export default function App() {
       const response = await fetch(apiUrl('/api/files'), {headers: {'x-share-token': activeToken}});
       if (!response.ok) throw new Error('Bibliothek konnte nicht geladen werden.');
       const data = await response.json();
-      setFiles(data.files);
-      if (data.files.length > 0 && !currentFile) {
-        setCurrentFile(data.files[0]);
-      }
+setFiles(data.files);
+        if (data.files.length > 0 && !currentFile) {
+          setCurrentFile(data.files[0]);
+        }
+        buildAlbumsArtists(data.files);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Dateiladen-Fehler');
       throw e;
@@ -417,6 +522,95 @@ export default function App() {
     if (response.ok) setRoomState(await response.json());
   }
 
+  async function createPlaylist() {
+    if (!newPlaylistName.trim()) return;
+    haptic();
+    const newPlaylist: Playlist = {
+      id: Date.now().toString(),
+      name: newPlaylistName.trim(),
+      trackIds: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      isPublic: true,
+    };
+    setPlaylists([...playlists, newPlaylist]);
+    setNewPlaylistName('');
+    setShowCreatePlaylist(false);
+    setView('playlists');
+  }
+
+  async function addToPlaylist(playlistId: string, fileId: string) {
+    haptic();
+    const playlist = playlists.find((p) => p.id === playlistId);
+    if (!playlist || playlist.trackIds.includes(fileId)) return;
+    const updated = { ...playlist, trackIds: [...playlist.trackIds, fileId], updatedAt: new Date().toISOString() };
+    setPlaylists(playlists.map((p) => (p.id === playlistId ? updated : p)));
+  }
+
+  async function removeFromPlaylist(playlistId: string, fileId: string) {
+    haptic();
+    const playlist = playlists.find((p) => p.id === playlistId);
+    if (!playlist) return;
+    const updated = { ...playlist, trackIds: playlist.trackIds.filter((id) => id !== fileId), updatedAt: new Date().toISOString() };
+    setPlaylists(playlists.map((p) => (p.id === playlistId ? updated : p)));
+  }
+
+  async function deletePlaylist(playlistId: string) {
+    haptic();
+    setPlaylists(playlists.filter((p) => p.id !== playlistId));
+  }
+
+  function playAlbum(album: Album) {
+    if (album.tracks.length === 0) return;
+    haptic();
+    setCurrentFile(album.tracks[0]);
+    setIsPlaying(true);
+    setIsPlayerOpen(true);
+  }
+
+  function playArtist(artist: Artist) {
+    if (artist.topTracks.length === 0) return;
+    haptic();
+    setCurrentFile(artist.topTracks[0]);
+    setIsPlaying(true);
+    setIsPlayerOpen(true);
+  }
+
+  function playPlaylist(playlist: Playlist) {
+    const track = files.find((f) => playlist.trackIds.includes(f.id));
+    if (!track) return;
+    haptic();
+    setCurrentFile(track);
+    setIsPlaying(true);
+    setIsPlayerOpen(true);
+  }
+
+  function startSleepTimer(minutes: number) {
+    setSleepTimer(minutes * 60);
+  }
+
+  function cancelSleepTimer() {
+    setSleepTimer(0);
+  }
+
+  useEffect(() => {
+    if (sleepTimer <= 0) return;
+    const timer = setInterval(() => {
+      setSleepTimer((prev) => {
+        if (prev <= 1) {
+          setIsPlaying(false);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [sleepTimer]);
+
+  function updateSettings(newSettings: Partial<UserSettings>) {
+    setSettings((prev) => ({ ...prev, ...newSettings }));
+  }
+
   async function addToQueue(file: ApiFile) {
     haptic();
     const response = await fetch(apiUrl('/api/queue'), {
@@ -499,6 +693,63 @@ export default function App() {
               onQueue={addToQueue}
               onRefresh={() => void loadFiles()}
               onOpenUpload={() => changeView('upload')}
+            />
+          )}
+
+          {view === 'albums' && (
+            <AlbumsView
+              albums={albums}
+              onPlayAlbum={playAlbum}
+              onSelectAlbum={setSelectedAlbum}
+            />
+          )}
+
+          {view === 'artists' && (
+            <ArtistsView
+              artists={artists}
+              onPlayArtist={playArtist}
+              onSelectArtist={setSelectedArtist}
+            />
+          )}
+
+          {view === 'playlists' && (
+            <PlaylistsView
+              playlists={playlists}
+              files={files}
+              onPlayPlaylist={playPlaylist}
+              onCreatePlaylist={() => setShowCreatePlaylist(true)}
+              onDeletePlaylist={deletePlaylist}
+              showCreate={showCreatePlaylist}
+              newPlaylistName={newPlaylistName}
+              setNewPlaylistName={setNewPlaylistName}
+              onConfirmCreate={createPlaylist}
+              onCancel={() => setShowCreatePlaylist(false)}
+            />
+          )}
+
+          {view === 'discover' && (
+            <DiscoverView
+              files={files}
+              likedIds={likedIds}
+              onPlay={playFile}
+              onLike={toggleLike}
+            />
+          )}
+
+          {view === 'charts' && (
+            <ChartsView
+              charts={charts}
+              onPlay={playFile}
+            />
+          )}
+
+          {view === 'settings' && (
+            <SettingsView
+              settings={settings}
+              sleepTimer={sleepTimer}
+              onUpdateSettings={updateSettings}
+              onStartSleepTimer={startSleepTimer}
+              onCancelSleepTimer={cancelSleepTimer}
             />
           )}
 
@@ -1008,10 +1259,14 @@ function BottomDock({view, setView, file, isPlaying, queueCount, progress, onTog
         )}
 
         <nav className="dock-nav" aria-label="Hauptnavigation">
-          <NavButton active={view === 'library'} onClick={() => setView('library')} icon={<Library className="h-5 w-5" />} label="Musik" />
+          <NavButton active={view === 'library'} onClick={() => setView('library')} icon={<Home className="h-5 w-5" />} label="Start" />
+          <NavButton active={view === 'discover'} onClick={() => setView('discover')} icon={<Compass className="h-5 w-5" />} label="Entdecken" />
+          <NavButton active={view === 'charts'} onClick={() => setView('charts')} icon={<BarChart3 className="h-5 w-5" />} label="Charts" />
+          <NavButton active={view === 'playlists'} onClick={() => setView('playlists')} icon={<ListMusic className="h-5 w-5" />} label="Playlists" />
+          <NavButton active={view === 'settings'} onClick={() => setView('settings')} icon={<Settings className="h-5 w-5" />} label="Einstell." />
           <NavButton active={view === 'queue'} onClick={() => setView('queue')} icon={<ListMusic className="h-5 w-5" />} label={`Queue ${queueCount}`} />
-          <NavButton active={view === 'upload'} onClick={() => setView('upload')} icon={<Plus className="h-5 w-5" />} label="Teilen" />
-          <NavButton active={view === 'room'} onClick={() => setView('room')} icon={<Shield className="h-5 w-5" />} label="Raum" />
+          <NavButton active={view === 'albums'} onClick={() => setView('albums')} icon={<Disc className="h-5 w-5" />} label="Alben" />
+          <NavButton active={view === 'artists'} onClick={() => setView('artists')} icon={<User className="h-5 w-5" />} label="Kuenstler" />
         </nav>
       </div>
     </footer>
