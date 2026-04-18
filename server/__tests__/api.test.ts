@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-describe('JT-MP3 Server API', () => {
+describe('StreamSync Server API', () => {
   describe('Security', () => {
     it('should require authentication for protected endpoints', async () => {
       // Test that /api/status requires token

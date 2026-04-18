@@ -214,7 +214,7 @@ export default function App() {
 
     navigator.mediaSession.metadata = new MediaMetadata({
       title: currentFile.title,
-      artist: currentFile.artist || 'JT-MP3',
+      artist: currentFile.artist || 'StreamSync',
       album: currentFile.album || status?.roomName || 'Privater Raum',
       artwork,
     });
@@ -504,7 +504,7 @@ function LoginView({token, error, setToken, onLogin}: {
             <Headphones className="h-7 w-7" />
           </div>
           <div>
-            <p className="text-sm font-bold text-mint">JT-MP3</p>
+            <p className="text-sm font-bold text-mint">StreamSync</p>
             <h1 className="text-2xl font-black leading-tight">Privater Musikraum</h1>
           </div>
         </div>
@@ -553,7 +553,7 @@ function Header({status, onLogout}: {status: ApiStatus | null; onLogout: () => v
             <Disc3 className="h-6 w-6" />
           </div>
           <div className="min-w-0">
-            <h1 className="truncate text-lg font-black">JT-MP3</h1>
+            <h1 className="truncate text-lg font-black">StreamSync</h1>
             <p className="truncate text-xs text-muted">{status?.roomName ?? 'Lokaler Raum'}</p>
           </div>
         </div>
@@ -803,7 +803,7 @@ function RoomView({status, onRefresh}: {status: ApiStatus | null; onRefresh: () 
         <div className="mb-5 flex items-center justify-between gap-3">
           <div>
             <p className="text-sm font-bold text-mint">Raum</p>
-            <h2 className="text-2xl font-black">{status?.roomName ?? 'JT-MP3'}</h2>
+            <h2 className="text-2xl font-black">{status?.roomName ?? 'StreamSync'}</h2>
           </div>
           <button onClick={onRefresh} className="icon-button" aria-label="Status aktualisieren">
             <RefreshCcw className="h-5 w-5" />

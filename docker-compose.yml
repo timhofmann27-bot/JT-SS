@@ -1,18 +1,23 @@
 services:
-  jt-mp3:
+  stream-sync:
     build: .
-    container_name: jt-mp3
+    container_name: stream-sync
     restart: unless-stopped
     environment:
-      - SHARE_TOKEN=${SHARE_TOKEN}
-      - ROOM_NAME=${ROOM_NAME}
-      - MAX_PEERS=${MAX_PEERS}
-      - PORT=${PORT}
-      - MEDIA_DIR=${MEDIA_DIR}
-      - DATA_DIR=${DATA_DIR}
-      - MAX_UPLOAD_SIZE=${MAX_UPLOAD_SIZE}
+      - SHARE_TOKEN=${SHARE_TOKEN:-your-secret-token-here}
+      - ROOM_NAME=${ROOM_NAME:-StreamSync}
+      - MAX_PEERS=${MAX_PEERS:-50}
+      - PORT=${PORT:-3001}
+      - MEDIA_DIR=/data/media
+      - DATA_DIR=/data/state
+      - MAX_UPLOAD_SIZE=${MAX_UPLOAD_SIZE:-100MB}
     ports:
       - "3001:3001"
     volumes:
       - ./media:/data/media
       - ./data:/data/state
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

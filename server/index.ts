@@ -21,7 +21,7 @@ if (!shareToken) {
   console.error('FATAL: SHARE_TOKEN environment variable is not set.');
   process.exit(1);
 }
-const roomName = process.env.ROOM_NAME ?? 'JT-MP3 Privat';
+const roomName = process.env.ROOM_NAME ?? 'StreamSync';
 const MAX_UPLOAD_SIZE = Number(process.env.MAX_UPLOAD_SIZE ?? '100MB');
 
 function parseSize(sizeStr: string) {
@@ -421,7 +421,7 @@ app.post('/api/queue/clear', requireAuth, async (_request, response, next) => {
 });
 
 app.get('/api/health', (_request, response) => {
-  response.json({ok: true, name: 'JT-MP3'});
+  response.json({ok: true, name: 'StreamSync'});
 });
 
 app.get('/api/art/:id', requireAuth, async (request, response, next) => {
@@ -464,12 +464,12 @@ app.get('/api/art/:id', requireAuth, async (request, response, next) => {
       <stop offset="1" stop-color="hsl(${hueC}, 84%, 68%)"/>
     </linearGradient>
   </defs>
-  <rect width="512" height="512" rx="64" fill="#101412"/>
+  <rect width="512" height="512" rx="64" fill="#0d1b2a"/>
   <rect x="24" y="24" width="464" height="464" rx="52" fill="url(#g)"/>
-  <circle cx="394" cy="118" r="82" fill="rgba(246,244,238,0.28)"/>
-  <circle cx="124" cy="392" r="112" fill="rgba(16,20,18,0.22)"/>
-  <text x="52" y="292" fill="#101412" font-family="Arial, sans-serif" font-size="132" font-weight="900">${initials}</text>
-  <text x="58" y="350" fill="rgba(16,20,18,0.72)" font-family="Arial, sans-serif" font-size="38" font-weight="700">JT-MP3</text>
+  <circle cx="394" cy="118" r="82" fill="rgba(0,212,255,0.28)"/>
+  <circle cx="124" cy="392" r="112" fill="rgba(0,212,255,0.18)"/>
+  <text x="52" y="292" fill="#0d1b2a" font-family="Arial, sans-serif" font-size="132" font-weight="900">${initials}</text>
+  <text x="58" y="350" fill="rgba(16,20,18,0.72)" font-family="Arial, sans-serif" font-size="38" font-weight="700">StreamSync</text>
 </svg>`);
   } catch (error) {
     next(error);
@@ -584,6 +584,6 @@ app.use((error: unknown, _request: express.Request, response: express.Response, 
 });
 
 app.listen(port, '0.0.0.0', () => {
-  console.log(`JT-MP3 server running on ${publicHost()}`);
+  console.log(`StreamSync server running on ${publicHost()}`);
   console.log(`Media folder: ${mediaDir}`);
 });
