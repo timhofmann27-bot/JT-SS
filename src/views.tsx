@@ -14,7 +14,8 @@ import {
   Music,
   UserPlus,
 } from 'lucide-react';
-import type { ApiFile, Album, ChartItem, UserProfile, SharedRoom } from './types';
+import type { ApiFile, Album, Artist, Playlist, ChartItem, UserSettings, UserProfile, SharedRoom, AuthUser, InviteAPI } from './types';
+import {
   Music,
   TrendingUp,
   BarChart3,
@@ -29,8 +30,13 @@ import type { ApiFile, Album, ChartItem, UserProfile, SharedRoom } from './types
   X,
   CheckCircle2,
   Clock8,
+  Mail,
+  Link2,
+  Trash2,
+  Crown,
+  Users,
+  AlertCircle,
 } from 'lucide-react';
-import type { Album, Artist, Playlist, ChartItem, ApiFile, UserSettings } from './types';
 
 const coverUrl = (file: ApiFile | undefined) => {
   if (!file) return '/icon.svg';
@@ -615,4 +621,260 @@ export function PublicRoomsView({ sharedRooms, files, onPlay }: {
       )}
     </motion.section>
   );
-}`;
+}
+
+export function LoginView({ onLogin, error }: {
+  onLogin: (username: string, password: string) => void;
+  error: string;
+}) {
+  const [username, setUsername] = React.useState('');
+  const [password, setPassword] = React.useState('');
+
+  return (
+    <main className="app-shell flex min-h-screen items-center justify-center px-4 py-8">
+      <motion.section initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md">
+        <div className="mb-6 flex items-center gap-3">
+          <div className="brand-mark">
+            <Music className="h-7 w-7" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-mint">StreamSync</p>
+            <h1 className="text-2xl font-black leading-tight">Anmelden</h1>
+          </div>
+        </div>
+
+        <form
+          onSubmit={(e) => { e.preventDefault(); onLogin(username, password); }}
+          className="surface p-5"
+        >
+          <img src="/icon.svg" alt="" className="mb-5 h-20 w-20 rounded-lg object-cover" />
+          <h2 className="text-2xl font-black leading-tight">Willkommen zurueck</h2>
+          <p className="mt-2 text-sm leading-6 text-muted">Melde dich an um fortzufahren.</p>
+
+          <label className="mb-2 mt-6 block text-sm font-bold text-muted" htmlFor="username">Benutzername</label>
+          <input
+            id="username"
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            autoFocus
+            className="touch-input"
+            placeholder="Benutzername"
+          />
+
+          <label className="mb-2 mt-4 block text-sm font-bold text-muted" htmlFor="password">Passwort</label>
+          <div className="relative">
+            <Lock className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted" />
+            <input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="touch-input pl-12"
+              placeholder="Passwort"
+            />
+          </div>
+
+          {error && (
+            <p className="mt-3 flex items-center gap-2 text-sm text-red">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              {error}
+            </p>
+          )}
+
+          <button className="primary-button mt-5 w-full">
+            Anmelden
+          </button>
+        </form>
+      </motion.section>
+    </main>
+  );
+}
+
+export function RegisterView({ onRegister, error, inviteCode = '' }: {
+  onRegister: (username: string, password: string, inviteCode: string) => void;
+  error: string;
+  inviteCode?: string;
+}) {
+  const [username, setUsername] = React.useState('');
+  const [password, setPassword] = React.useState(password);
+  const [code, setCode] = React.useState(inviteCode);
+
+  return (
+    <main className="app-shell flex min-h-screen items-center justify-center px-4 py-8">
+      <motion.section initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md">
+        <div className="mb-6 flex items-center gap-3">
+          <div className="brand-mark">
+            <Music className="h-7 w-7" />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-mint">StreamSync</p>
+            <h1 className="text-2xl font-black leading-tight">Registrieren</h1>
+          </div>
+        </div>
+
+        <form
+          onSubmit={(e) => { e.preventDefault(); onRegister(username, password, code); }}
+          className="surface p-5"
+        >
+          <img src="/icon.svg" alt="" className="mb-5 h-20 w-20 rounded-lg object-cover" />
+          <h2 className="text-2xl font-black leading-tight">Konto erstellen</h2>
+          <p className="mt-2 text-sm leading-6 text-muted">Du brauchst einen Einladungscode.</p>
+
+          <label className="mb-2 mt-6 block text-sm font-bold text-muted" htmlFor="reg-username">Benutzername</label>
+          <input
+            id="reg-username"
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            autoFocus
+            className="touch-input"
+            placeholder="Waehle einen Namen"
+          />
+
+          <label className="mb-2 mt-4 block text-sm font-bold text-muted" htmlFor="reg-password">Passwort</label>
+          <input
+            id="reg-password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="touch-input"
+            placeholder="Passwort"
+          />
+
+          <label className="mb-2 mt-4 block text-sm font-bold text-muted" htmlFor="invite">Einladungscode</label>
+          <div className="relative">
+            <Mail className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted" />
+            <input
+              id="invite"
+              type="text"
+              value={code}
+              onChange={(e) => setCode(e.target.value.toUpperCase())}
+              className="touch-input pl-12"
+              placeholder="EINLADUNGSCODE"
+            />
+          </div>
+
+          {error && (
+            <p className="mt-3 flex items-center gap-2 text-sm text-red">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              {error}
+            </p>
+          )}
+
+          <button className="primary-button mt-5 w-full">
+            Registrieren
+          </button>
+        </form>
+      </motion.section>
+    </main>
+  );
+}
+
+export function AdminView({ user, invites, onCreateInvite, onDeleteInvite }: {
+  user: AuthUser | null;
+  invites: InviteAPI[];
+  onCreateInvite: (role: 'admin' | 'member', maxUses: number) => void;
+  onDeleteInvite: (id: string) => void;
+}) {
+  const [role, setRole] = React.useState<'member'>('member');
+  const [maxUses, setMaxUses] = React.useState(1);
+
+  return (
+    <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="space-y-4">
+      <h2 className="text-2xl font-black flex items-center gap-2">
+        <Crown className="h-6 w-6 text-mint" />
+        Admin
+      </h2>
+
+      <div className="surface p-5">
+        <h3 className="font-black mb-3">Neue Einladung erstellen</h3>
+        <div className="flex gap-2 mb-4">
+          <select
+            value={role}
+            onChange={(e) => setRole(e.target.value as 'admin' | 'member')}
+            className="touch-input flex-1"
+          >
+            <option value="member">Mitglied</option>
+            <option value="admin">Admin</option>
+          </select>
+          <input
+            type="number"
+            min="1"
+            max="100"
+            value={maxUses}
+            onChange={(e) => setMaxUses(Number(e.target.value))}
+            className="touch-input w-20"
+            placeholder="Nutzungen"
+          />
+          <button onClick={() => onCreateInvite(role, maxUses)} className="icon-button bg-mint text-night">
+            <Plus className="h-5 w-5" />
+          </button>
+        </div>
+      </div>
+
+      <div className="surface p-5">
+        <h3 className="font-black mb-3">Aktive Einladungen</h3>
+        {invites.length === 0 ? (
+          <p className="text-muted text-sm">Keine Einladungen</p>
+        ) : (
+          <div className="space-y-2">
+            {invites.map((invite) => (
+              <div key={invite.id} className="flex items-center justify-between p-2 rounded-lg bg-soft/50">
+                <div>
+                  <p className="font-mono text-mint font-bold">{invite.code}</p>
+                  <p className="text-xs text-muted">{invite.role} • {invite.usedCount}/{invite.maxUses} genutzt</p>
+                </div>
+                <button onClick={() => onDeleteInvite(invite.id)} className="icon-button text-coral">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </motion.section>
+  );
+}
+
+export function TeamView({ users, onRemove }: {
+  users: { id: string; username: string; role: string; createdAt: string; lastLogin: string }[];
+  onRemove: (id: string) => void;
+}) {
+  return (
+    <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="space-y-4">
+      <h2 className="text-2xl font-black flex items-center gap-2">
+        <Users className="h-6 w-6 text-mint" />
+        Team
+      </h2>
+
+      <div className="surface p-5">
+        <h3 className="font-black mb-3">Mitglieder</h3>
+        {users.length === 0 ? (
+          <p className="text-muted text-sm">Keine Mitglieder</p>
+        ) : (
+          <div className="space-y-2">
+            {users.map((user) => (
+              <div key={user.id} className="flex items-center justify-between p-2 rounded-lg bg-soft/50">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-full bg-mint/20 flex items-center justify-center">
+                    <User className="h-5 w-5 text-mint" />
+                  </div>
+                  <div>
+                    <p className="font-bold">{user.username}</p>
+                    <p className="text-xs text-muted capitalize">{user.role}</p>
+                  </div>
+                </div>
+                {user.role !== 'admin' && (
+                  <button onClick={() => onRemove(user.id)} className="icon-button text-coral">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </motion.section>
+  );
+}

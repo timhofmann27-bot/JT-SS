@@ -110,4 +110,38 @@ export interface SharedRoom {
   createdAt: string;
 }
 
-export type View = 'library' | 'queue' | 'albums' | 'artists' | 'playlists' | 'discover' | 'charts' | 'settings' | 'upload' | 'room' | 'share' | 'public';
+export interface InviteTicket {
+  id: string;
+  code: string;
+  role: 'admin' | 'member';
+  maxUses: number;
+  usedCount: number;
+  expiresAt?: string;
+  createdAt: string;
+  createdBy: string;
+}
+
+export interface AuthUser {
+  id: string;
+  username: string;
+  role: 'admin' | 'member';
+}
+
+export interface LoginResponse {
+  token: string;
+  user: AuthUser;
+}
+
+export interface InviteAPI {
+  id: string;
+  code: string;
+  role: 'admin' | 'member';
+  maxUses: number;
+  usedCount: number;
+  usedBy: string[];
+  expiresAt?: string;
+  createdAt: string;
+  createdBy: string;
+}
+
+export type View = 'library' | 'queue' | 'albums' | 'artists' | 'playlists' | 'discover' | 'charts' | 'settings' | 'upload' | 'room' | 'share' | 'public' | 'login' | 'register' | 'admin' | 'team';

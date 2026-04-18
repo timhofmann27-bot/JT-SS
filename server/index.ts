@@ -14,15 +14,96 @@ const rootDir = path.resolve(__dirname, '..');
 const mediaDir = path.resolve(process.env.MEDIA_DIR ?? path.join(rootDir, 'media'));
 const dataDir = path.resolve(process.env.DATA_DIR ?? path.join(rootDir, 'data'));
 const stateFile = path.join(dataDir, 'state.json');
+const usersFile = path.join(dataDir, 'users.json');
+const invitesFile = path.join(dataDir, 'invites.json');
 const distDir = path.join(rootDir, 'dist');
 const port = Number(process.env.PORT ?? 3001);
 const shareToken = process.env.SHARE_TOKEN;
+const adminSecret = process.env.ADMIN_SECRET ?? 'admin123';
 if (!shareToken) {
   console.error('FATAL: SHARE_TOKEN environment variable is not set.');
   process.exit(1);
 }
 const roomName = process.env.ROOM_NAME ?? 'StreamSync';
 const MAX_UPLOAD_SIZE = Number(process.env.MAX_UPLOAD_SIZE ?? '100MB');
+
+function ensureDataFile(file: string, defaultData: object) {
+  if (!fs.existsSync(file)) {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, JSON.stringify(defaultData));
+  }
+  return JSON.parse(fs.readFileSync(file, 'utf-8'));
+}
+
+interface User {
+  id: string;
+  username: string;
+  passwordHash: string;
+  role: 'admin' | 'member';
+  createdAt: string;
+  lastLogin: string;
+}
+
+interface Invite {
+  id: string;
+  code: string;
+  role: 'admin' | 'member';
+  maxUses: number;
+  usedCount: number;
+  usedBy: string[];
+  expiresAt?: string;
+  createdAt: string;
+  createdBy: string;
+}
+
+const users: User[] = ensureDataFile(usersFile, []).users || [];
+const invites: Invite[] = ensureDataFile(invitesFile, []).invites || [];
+
+function saveUsers() {
+  fs.writeFileSync(usersFile, JSON.stringify({ users }, null, 2));
+}
+
+function saveInvites() {
+  fs.writeFileSync(invitesFile, JSON.stringify({ invites }, null, 2));
+}
+
+function hashPassword(password: string) {
+  return crypto.createHash('sha256').update(password).digest('hex');
+}
+
+function generateCode(length = 8) {
+  return crypto.randomBytes(length).toString('hex').slice(0, length).toUpperCase();
+}
+
+function requireAuth(request: express.Request, response: express.Response, next: express.NextFunction) {
+  const token = request.headers['x-auth-token'] as string;
+  if (!token) {
+    response.status(401).json({ error: 'auth required' });
+    return;
+  }
+  const user = users.find((u) => u.passwordHash === hashPassword(token));
+  if (!user) {
+    response.status(401).json({ error: 'invalid token' });
+    return;
+  }
+  request.headers['x-user'] = user;
+  next();
+}
+
+function requireAdmin(request: express.Request, response: express.Response, next: express.NextFunction) {
+  const token = request.headers['x-auth-token'] as string;
+  if (!token) {
+    response.status(401).json({ error: 'auth required' });
+    return;
+  }
+  const user = users.find((u) => u.passwordHash === hashPassword(token));
+  if (!user || user.role !== 'admin') {
+    response.status(403).json({ error: 'admin required' });
+    return;
+  }
+  request.headers['x-user'] = user;
+  next();
+}
 
 function parseSize(sizeStr: string) {
   const match = sizeStr.match(/^(\d+)(KB|MB|GB)$/i);
@@ -418,6 +499,118 @@ app.post('/api/queue/clear', requireAuth, async (_request, response, next) => {
   } catch (error) {
     next(error);
   }
+});
+
+app.post('/api/auth/login', (request, response) => {
+  const { username, password } = request.body;
+  const passwordHash = hashPassword(password);
+  const user = users.find((u) => u.username === username && u.passwordHash === passwordHash);
+  if (!user) {
+    response.status(401).json({ error: 'invalid credentials' });
+    return;
+  }
+  user.lastLogin = new Date().toISOString();
+  saveUsers();
+  response.json({
+    token: password,
+    user: { id: user.id, username: user.username, role: user.role },
+  });
+});
+
+app.post('/api/auth/register', (request, response) => {
+  const { username, password, inviteCode } = request.body;
+  if (!username || !password || !inviteCode) {
+    response.status(400).json({ error: 'username, password and invite code required' });
+    return;
+  }
+  const invite = invites.find((i) => i.code === inviteCode.toUpperCase() && i.usedCount < i.maxUses);
+  if (!invite) {
+    response.status(400).json({ error: 'invalid or expired invite code' });
+    return;
+  }
+  if (users.find((u) => u.username === username)) {
+    response.status(400).json({ error: 'username already taken' });
+    return;
+  }
+  const newUser: User = {
+    id: generateCode(4),
+    username,
+    passwordHash: hashPassword(password),
+    role: invite.role,
+    createdAt: new Date().toISOString(),
+    lastLogin: new Date().toISOString(),
+  };
+  users.push(newUser);
+  invite.usedCount += 1;
+  invite.usedBy.push(username);
+  saveUsers();
+  saveInvites();
+  response.json({ token: password, user: { id: newUser.id, username: newUser.username, role: newUser.role } });
+});
+
+app.get('/api/auth/me', requireAuth, (request, response) => {
+  const user = request.headers['x-user'] as User;
+  response.json({ id: user.id, username: user.username, role: user.role });
+});
+
+app.post('/api/auth/invite', requireAdmin, (request, response) => {
+  const { role = 'member', maxUses = 1, expiresInHours } = request.body;
+  const user = request.headers['x-user'] as User;
+  const newInvite: Invite = {
+    id: generateCode(4),
+    code: generateCode(6),
+    role,
+    maxUses,
+    usedCount: 0,
+    usedBy: [],
+    expiresAt: expiresInHours ? new Date(Date.now() + expiresInHours * 3600000).toISOString() : undefined,
+    createdAt: new Date().toISOString(),
+    createdBy: user.username,
+  };
+  invites.push(newInvite);
+  saveInvites();
+  response.json(newInvite);
+});
+
+app.get('/api/auth/invites', requireAdmin, (_request, response) => {
+  response.json(invites);
+});
+
+app.get('/api/auth/users', requireAdmin, (_request, response) => {
+  response.json(users.map((u) => ({ id: u.id, username: u.username, role: u.role, createdAt: u.createdAt, lastLogin: u.lastLogin })));
+});
+
+app.delete('/api/auth/invite/:id', requireAdmin, (request, response) => {
+  const id = request.params.id;
+  const index = invites.findIndex((i) => i.id === id);
+  if (index === -1) {
+    response.status(404).json({ error: 'invite not found' });
+    return;
+  }
+  invites.splice(index, 1);
+  saveInvites();
+  response.json({ ok: true });
+});
+
+app.post('/api/auth/admin-secret', (request, response) => {
+  const { secret } = request.body;
+  if (secret !== adminSecret) {
+    response.status(403).json({ error: 'invalid secret' });
+    return;
+  }
+  if (users.length === 0) {
+    const adminUser: User = {
+      id: generateCode(4),
+      username: 'admin',
+      passwordHash: hashPassword('admin'),
+      role: 'admin',
+      createdAt: new Date().toISOString(),
+      lastLogin: new Date().toISOString(),
+    };
+    users.push(adminUser);
+    saveUsers();
+  }
+  response.json({ ok: true, message: 'admin initialized' });
 });
 
 app.get('/api/health', (_request, response) => {

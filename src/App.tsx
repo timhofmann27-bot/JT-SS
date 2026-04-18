@@ -60,7 +60,8 @@ import {
   Rss,
 } from 'lucide-react';
 import {AnimatePresence, motion} from 'motion/react';
-import type {ApiFile, ApiStatus, QueueItem, RoomState, UploadState, View, Album, Artist, Playlist, ChartItem, UserSettings, UserProfile, SharedRoom} from './types';
+import type {ApiFile, ApiStatus, QueueItem, RoomState, UploadState, View, Album, Artist, Playlist, ChartItem, UserSettings, UserProfile, SharedRoom, AuthUser, LoginResponse, InviteAPI} from './types';
+import {LoginView, RegisterView, AlbumsView, ArtistsView, PlaylistsView, DiscoverView, ChartsView, SettingsView, ShareView, PublicRoomsView, AdminView, TeamView} from './views';
 
 const TOKEN_STORAGE_KEY = 'jt-mp3.sessionToken';
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -146,6 +147,13 @@ export default function App() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [shareCode, setShareCode] = useState(() => localStorage.getItem('shareCode') || '');
   const [sharedRooms, setSharedRooms] = useState<SharedRoom[]>([]);
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const [invites, setInvites] = useState<InviteAPI[]>([]);
+  const [teamUsers, setTeamUsers] = useState<{ id: string; username: string; role: string; createdAt: string; lastLogin: string }[]>([]);
+  const [registerCode, setRegisterCode] = useState(() => {
+    const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
+    return params.get('invite') || '';
+  });
   const [settings, setSettings] = useState<UserSettings>({
     audioQuality: 'normal',
     sleepTimer: 0,
@@ -393,10 +401,105 @@ setFiles(data.files);
     }
   }
 
+  async function handleAuthLogin(username: string, password: string) {
+    setError('');
+    try {
+      const res = await fetch(apiUrl('/api/auth/login'), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      const data: LoginResponse = await res.json();
+      if (!res.ok) throw new Error(data.error || 'login failed');
+      sessionStorage.setItem(TOKEN_STORAGE_KEY, data.token);
+      setToken(data.token);
+      setCurrentUser(data.user);
+      await loadFiles(data.token);
+      await loadRoomState(data.token);
+      haptic();
+      setView('library');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Anmeldung fehlgeschlagen');
+    }
+  }
+
+  async function handleAuthRegister(username: string, password: string, inviteCode: string) {
+    setError('');
+    try {
+      const res = await fetch(apiUrl('/api/auth/register'), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ username, password, inviteCode }),
+      });
+      const data: LoginResponse = await res.json();
+      if (!res.ok) throw new Error(data.error || 'registration failed');
+      sessionStorage.setItem(TOKEN_STORAGE_KEY, data.token);
+      setToken(data.token);
+      setCurrentUser(data.user);
+      await loadFiles(data.token);
+      haptic();
+      setView('library');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Registrierung fehlgeschlagen');
+    }
+  }
+
+  async function loadInvites() {
+    try {
+      const res = await fetch(apiUrl('/api/auth/invites'), {
+        headers: { 'x-auth-token': token },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setInvites(data);
+      }
+    } catch {}
+  }
+
+  async function loadTeamUsers() {
+    try {
+      const res = await fetch(apiUrl('/api/auth/users'), {
+        headers: { 'x-auth-token': token },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTeamUsers(data);
+      }
+    } catch {}
+  }
+
+  async function createInvite(role: 'admin' | 'member', maxUses: number) {
+    try {
+      const res = await fetch(apiUrl('/api/auth/invite'), {
+        method: 'POST',
+        headers: { 'x-auth-token': token, 'content-type': 'application/json' },
+        body: JSON.stringify({ role, maxUses }),
+      });
+      if (res.ok) {
+        loadInvites();
+        haptic();
+      }
+    } catch {}
+  }
+
+  async function deleteInvite(id: string) {
+    try {
+      const res = await fetch(apiUrl(`/api/auth/invite/${id}`), {
+        method: 'DELETE',
+        headers: { 'x-auth-token': token },
+      });
+      if (res.ok) {
+        loadInvites();
+        haptic();
+      }
+    } catch {}
+  }
+
   function logout() {
     haptic();
     setToken('');
     setLoginToken('');
+    setCurrentUser(null);
     setFiles([]);
     setRoomState({likedIds: [], queue: [], updatedAt: ''});
     setCurrentFile(null);
@@ -693,8 +796,15 @@ setFiles(data.files);
     if (response.ok) setRoomState(await response.json());
   }
 
-  if (!isAuthenticated) {
-    return <LoginView token={loginToken} error={error} setToken={setLoginToken} onLogin={handleLogin} />;
+  const showLogin = view === 'login';
+  const showRegister = view === 'register';
+
+  if (!isAuthenticated || showLogin) {
+    return <LoginView error={error} onLogin={handleAuthLogin} />;
+  }
+
+  if (showRegister) {
+    return <RegisterView error={error} inviteCode={registerCode} onRegister={handleAuthRegister} />;
   }
 
   return (
