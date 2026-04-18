@@ -89,4 +89,25 @@ export interface UploadState {
   message: string;
 }
 
-export type View = 'library' | 'queue' | 'albums' | 'artists' | 'playlists' | 'discover' | 'charts' | 'settings' | 'upload' | 'room';
+export interface UserProfile {
+  id: string;
+  displayName: string;
+  bio?: string;
+  topTracks: string[];
+  avatarUrl?: string;
+  isPublic: boolean;
+  shareCode: string;
+  createdAt: string;
+}
+
+export interface SharedRoom {
+  id: string;
+  displayName: string;
+  bio?: string;
+  trackIds: string[];
+  likedCount: number;
+  followerCount: number;
+  createdAt: string;
+}
+
+export type View = 'library' | 'queue' | 'albums' | 'artists' | 'playlists' | 'discover' | 'charts' | 'settings' | 'upload' | 'room' | 'share' | 'public';

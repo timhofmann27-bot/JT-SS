@@ -8,6 +8,13 @@ import {
   MoreHorizontal,
   Disc,
   User,
+  Lock,
+  Copy,
+  Globe,
+  Music,
+  UserPlus,
+} from 'lucide-react';
+import type { ApiFile, Album, ChartItem, UserProfile, SharedRoom } from './types';
   Music,
   TrendingUp,
   BarChart3,
@@ -452,4 +459,160 @@ function trackMeta(file: ApiFile) {
   if (artist && album) return `${artist} - ${album} - ${duration}${file.sizeLabel}`;
   if (artist) return `${artist} - ${duration}${file.sizeLabel}`;
   return `${type} - ${duration}${file.sizeLabel}`;
+}
+
+export function ShareView({ userProfile, shareCode, files, onGenerateCode, onTogglePublic, onCopyLink }: {
+  userProfile: UserProfile | null;
+  shareCode: string;
+  files: ApiFile[];
+  onGenerateCode: () => void;
+  onTogglePublic: () => void;
+  onCopyLink: () => void;
+}) {
+  const isPublic = userProfile?.isPublic ?? false;
+  const topTracks = userProfile?.topTracks?.map((id) => files.find((f) => f.id === id)).filter(Boolean) || [];
+
+  return (
+    <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="space-y-4">
+      <h2 className="text-2xl font-black">Musik teilen</h2>
+
+      <div className="surface p-5">
+        {!shareCode ? (
+          <div className="text-center">
+            <p className="text-muted mb-4">Erstelle einen öffentlichen Link, damit andere deine Musik sehen und hören können.</p>
+            <button onClick={onGenerateCode} className="primary-button">
+              <Globe className="h-5 w-5 mr-2" />
+              Oeffentliches Profil erstellen
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="cover-wrap h-16 w-16">
+                  <img src={coverUrl(files[0])} alt="" className="cover-art" />
+                </div>
+                <div>
+                  <p className="font-black">{userProfile?.displayName || 'Mein Profil'}</p>
+                  <p className="text-sm text-muted">#{shareCode}</p>
+                </div>
+              </div>
+              <button
+                onClick={onTogglePublic}
+                className={`icon-button ${isPublic ? 'bg-mint text-night' : ''}`}
+              >
+                {isPublic ? <Globe className="h-5 w-5" /> : <Lock className="h-5 w-5" />}
+              </button>
+            </div>
+
+            {isPublic && (
+              <>
+                <div className="mt-4">
+                  <label className="text-sm font-bold text-muted mb-2 block">Dein Link</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={`${typeof window !== 'undefined' ? window.location.origin : ''}/p/${shareCode}`}
+                      className="touch-input flex-1"
+                    />
+                    <button onClick={onCopyLink} className="icon-button">
+                      <Copy className="h-5 w-5" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-4 p-3 rounded-lg bg-soft/50">
+                  <p className="text-sm text-muted">Teile diesen Link - jeder kann deine Musik sehen und streamen:</p>
+                  <p className="font-mono text-mint mt-1">{typeof window !== 'undefined' ? window.location.origin : ''}/p/{shareCode}</p>
+                </div>
+              </>
+            )}
+
+            {topTracks.length > 0 && (
+              <div className="mt-4">
+                <h3 className="font-bold text-sm text-muted mb-2">Deine Top Tracks</h3>
+                <div className="space-y-2">
+                  {topTracks.slice(0, 5).map((file: ApiFile | boolean) => file && (
+                    <div key={file.id} className="flex items-center gap-2">
+                      <img src={coverUrl(file)} alt="" className="h-8 w-8 rounded" />
+                      <p className="truncate text-sm">{file.title}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="surface p-5">
+        <h3 className="font-black mb-3">Was andere sehen</h3>
+        <ul className="space-y-2 text-sm text-muted">
+          <li className="flex items-center gap-2">
+            <User className="h-4 w-4" />
+            Dein Profil-Name
+          </li>
+          <li className="flex items-center gap-2">
+            <Music className="h-4 w-4" />
+            Deine Top 10 Tracks
+          </li>
+          <li className="flex items-center gap-2">
+            <Heart className="h-4 w-4" />
+            Anzahl Likes
+          </li>
+        </ul>
+      </div>
+    </motion.section>
+  );
+}
+
+export function PublicRoomsView({ sharedRooms, files, onPlay }: {
+  sharedRooms: SharedRoom[];
+  files: ApiFile[];
+  onPlay: (file: ApiFile) => void;
+}) {
+  return (
+    <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Globe className="h-5 w-5 text-mint" />
+        <h2 className="text-2xl font-black">Oeffentliche Profile</h2>
+      </div>
+
+      {sharedRooms.length === 0 ? (
+        <div className="empty-state">
+          <Globe className="h-11 w-11 text-mint" />
+          <h3 className="text-xl font-black">Keine oeffentlichen Profile</h3>
+          <p className="max-w-sm text-sm leading-6 text-muted">Erstelle zuerst dein eigenes oeffentliches Profil um gefunden zu werden.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {sharedRooms.map((room) => {
+            const tracks = room.trackIds.map((id) => files.find((f) => f.id === id)).filter(Boolean);
+            return (
+              <motion.div
+                key={room.id}
+                className="track-row"
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
+              >
+                <button onClick={() => tracks[0] && onPlay(tracks[0])} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                  <div className="cover-wrap h-12 w-12">
+                    <img src={coverUrl(tracks[0] as ApiFile)} alt="" className="cover-art" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-bold">{room.displayName}</p>
+                    <p className="truncate text-xs text-muted">{room.trackIds.length} Tracks • {room.followerCount} Follower</p>
+                  </div>
+                </button>
+                <button className="icon-button">
+                  <UserPlus className="h-4 w-4" />
+                </button>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
+    </motion.section>
+  );
 }`;

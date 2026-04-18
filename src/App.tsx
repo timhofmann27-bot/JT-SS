@@ -50,9 +50,17 @@ import {
   BarChart3,
   Timer,
   Sliders,
+  Share2,
+  Link2,
+  UserPlus,
+  Globe,
+  Copy,
+  QrCode,
+  ExternalLink,
+  Rss,
 } from 'lucide-react';
 import {AnimatePresence, motion} from 'motion/react';
-import type {ApiFile, ApiStatus, QueueItem, RoomState, UploadState, View, Album, Artist, Playlist, ChartItem, UserSettings} from './types';
+import type {ApiFile, ApiStatus, QueueItem, RoomState, UploadState, View, Album, Artist, Playlist, ChartItem, UserSettings, UserProfile, SharedRoom} from './types';
 
 const TOKEN_STORAGE_KEY = 'jt-mp3.sessionToken';
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
@@ -135,6 +143,9 @@ export default function App() {
   const [showCreatePlaylist, setShowCreatePlaylist] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [sleepTimer, setSleepTimer] = useState(0);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [shareCode, setShareCode] = useState(() => localStorage.getItem('shareCode') || '');
+  const [sharedRooms, setSharedRooms] = useState<SharedRoom[]>([]);
   const [settings, setSettings] = useState<UserSettings>({
     audioQuality: 'normal',
     sleepTimer: 0,
@@ -611,6 +622,44 @@ setFiles(data.files);
     setSettings((prev) => ({ ...prev, ...newSettings }));
   }
 
+  function generateShareCode() {
+    const newCode = Math.random().toString(36).substring(2, 8).toUpperCase();
+    setShareCode(newCode);
+    localStorage.setItem('shareCode', newCode);
+    const profile: UserProfile = {
+      id: Date.now().toString(),
+      displayName: status?.roomName || 'StreamSync User',
+      topTracks: files.slice(0, 10).map((f) => f.id),
+      isPublic: true,
+      shareCode: newCode,
+      createdAt: new Date().toISOString(),
+    };
+    setUserProfile(profile);
+    haptic();
+  }
+
+  function togglePublic() {
+    if (userProfile) {
+      setUserProfile({ ...userProfile, isPublic: !userProfile.isPublic });
+    } else {
+      generateShareCode();
+    }
+  }
+
+  function copyShareLink() {
+    const link = `${window.location.origin}/public/${shareCode}`;
+    navigator.clipboard.writeText(link);
+    haptic();
+  }
+
+  useEffect(() => {
+    if (!shareCode) return;
+    fetch(apiUrl(`/api/shared`))
+      .then((res) => res.json())
+      .then((data) => setSharedRooms(data.rooms || []))
+      .catch(() => {});
+  }, [shareCode]);
+
   async function addToQueue(file: ApiFile) {
     haptic();
     const response = await fetch(apiUrl('/api/queue'), {
@@ -768,6 +817,25 @@ setFiles(data.files);
 
           {view === 'room' && (
             <RoomView status={status} onRefresh={() => void loadStatus()} />
+          )}
+
+          {view === 'share' && (
+            <ShareView
+              userProfile={userProfile}
+              shareCode={shareCode}
+              files={files}
+              onGenerateCode={generateShareCode}
+              onTogglePublic={togglePublic}
+              onCopyLink={copyShareLink}
+            />
+          )}
+
+          {view === 'public' && (
+            <PublicRoomsView
+              sharedRooms={sharedRooms}
+              files={files}
+              onPlay={playFile}
+            />
           )}
         </AnimatePresence>
       </main>
@@ -1267,6 +1335,8 @@ function BottomDock({view, setView, file, isPlaying, queueCount, progress, onTog
           <NavButton active={view === 'queue'} onClick={() => setView('queue')} icon={<ListMusic className="h-5 w-5" />} label={`Queue ${queueCount}`} />
           <NavButton active={view === 'albums'} onClick={() => setView('albums')} icon={<Disc className="h-5 w-5" />} label="Alben" />
           <NavButton active={view === 'artists'} onClick={() => setView('artists')} icon={<User className="h-5 w-5" />} label="Kuenstler" />
+          <NavButton active={view === 'share'} onClick={() => setView('share')} icon={<Share2 className="h-5 w-5" />} label="Teilen" />
+          <NavButton active={view === 'public'} onClick={() => setView('public')} icon={<Globe className="h-5 w-5" />} label="Profil" />
         </nav>
       </div>
     </footer>
