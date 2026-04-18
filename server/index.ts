@@ -16,9 +16,24 @@ const dataDir = path.resolve(process.env.DATA_DIR ?? path.join(rootDir, 'data'))
 const stateFile = path.join(dataDir, 'state.json');
 const distDir = path.join(rootDir, 'dist');
 const port = Number(process.env.PORT ?? 3001);
-const shareToken = process.env.SHARE_TOKEN ?? 'local-demo-key';
+const shareToken = process.env.SHARE_TOKEN;
+if (!shareToken) {
+  console.error('FATAL: SHARE_TOKEN environment variable is not set.');
+  process.exit(1);
+}
 const roomName = process.env.ROOM_NAME ?? 'JT-MP3 Privat';
-const maxPeers = Number(process.env.MAX_PEERS ?? 50);
+const MAX_UPLOAD_SIZE = Number(process.env.MAX_UPLOAD_SIZE ?? '100MB');
+
+function parseSize(sizeStr: string) {
+  const match = sizeStr.match(/^(\d+)(KB|MB|GB)$/i);
+  if (!match) return 100 * 1024 * 1024;
+  const value = Number(match[1]);
+  const unit = match[2].toUpperCase();
+  const multipliers: Record<string, number> = { KB: 1024, MB: 1024 * 1024, GB: 1024 * 1024 * 1024 };
+  return value * (multipliers[unit] || 1);
+}
+
+const maxUploadBytes = parseSize(process.env.MAX_UPLOAD_SIZE ?? '100MB');
 
 const supportedExtensions = new Map<string, {kind: 'audio' | 'video'; mimeType: string}>([
   ['.mp3', {kind: 'audio', mimeType: 'audio/mpeg'}],
@@ -78,8 +93,7 @@ const eventClients = new Set<express.Response>();
 
 function getToken(request: express.Request) {
   const headerToken = request.header('x-share-token');
-  const queryToken = typeof request.query.token === 'string' ? request.query.token : '';
-  return headerToken || queryToken || '';
+  return headerToken || '';
 }
 
 function requireAuth(request: express.Request, response: express.Response, next: express.NextFunction) {
@@ -160,17 +174,29 @@ async function readState(): Promise<PrivateState> {
   }
 }
 
+let writeQueue: Promise<any> = Promise.resolve();
+
 async function writeState(state: PrivateState) {
-  const nextState = {
-    ...state,
-    likedIds: Array.from(new Set(state.likedIds)),
-    updatedAt: new Date().toISOString(),
+  const operation = async () => {
+    const nextState = {
+      ...state,
+      likedIds: Array.from(new Set(state.likedIds)),
+      updatedAt: new Date().toISOString(),
+    };
+    const tempFile = `${stateFile}.tmp`;
+    await fs.promises.writeFile(tempFile, `${JSON.stringify(nextState, null, 2)}\n`, 'utf8');
+    await fs.promises.rename(tempFile, stateFile);
+    await broadcastState();
+    return nextState;
   };
-  const tempFile = `${stateFile}.tmp`;
-  await fs.promises.writeFile(tempFile, `${JSON.stringify(nextState, null, 2)}\n`, 'utf8');
-  await fs.promises.rename(tempFile, stateFile);
-  await broadcastState();
-  return nextState;
+
+  const result = writeQueue.then(operation).catch(err => {
+    console.error('State write error:', err);
+    throw err;
+  });
+
+  writeQueue = result.then(() => {}).catch(() => {});
+  return result;
 }
 
 async function roomState(files?: ApiFile[]) {
@@ -223,7 +249,6 @@ function resolveMediaPath(fileName: string) {
   if (!resolved.startsWith(`${mediaDir}${path.sep}`)) {
     throw new Error('Invalid media path');
   }
-
   return resolved;
 }
 
@@ -278,8 +303,6 @@ app.get('/api/status', requireAuth, (_request, response) => {
     roomName,
     host: publicHost(),
     maxPeers,
-    mediaPath: mediaDir,
-    dataPath: dataDir,
     livePeers: eventClients.size,
   });
 });
@@ -464,7 +487,20 @@ app.post('/api/upload', requireAuth, async (request, response, next) => {
     }
 
     const target = resolveMediaPath(originalName);
-    const writeStream = fs.createWriteStream(target, {flags: 'wx'});
+    const tempTarget = `${target}.tmp-${crypto.randomBytes(4).toString('hex')}`;
+    const writeStream = fs.createWriteStream(tempTarget, {flags: 'wx'});
+
+    let bytesReceived = 0;
+    request.on('data', (chunk) => {
+      bytesReceived += chunk.length;
+      if (bytesReceived > maxUploadBytes) {
+        writeStream.destroy();
+        request.destroy();
+        if (!response.headersSent) {
+          response.status(413).json({error: 'file too large'});
+        }
+      }
+    });
 
     request.pipe(writeStream);
     request.on('error', next);
@@ -475,7 +511,19 @@ app.post('/api/upload', requireAuth, async (request, response, next) => {
       }
       next(error);
     });
-    writeStream.on('finish', () => response.status(201).json({ok: true}));
+
+    writeStream.on('finish', async () => {
+      try {
+        if (bytesReceived <= maxUploadBytes) {
+          await fs.promises.rename(tempTarget, target);
+          response.status(201).json({ok: true});
+        } else {
+          await fs.promises.unlink(tempTarget).catch(() => {});
+        }
+      } catch (err) {
+        next(err);
+      }
+    });
   } catch (error) {
     next(error);
   }

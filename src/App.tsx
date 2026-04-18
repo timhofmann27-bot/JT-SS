@@ -48,9 +48,40 @@ function haptic() {
   }
 }
 
-function coverUrl(file: ApiFile | null, token: string) {
-  if (!file) return '/icon.svg';
-  return apiUrl(`/api/art/${file.id}?token=${encodeURIComponent(token)}`);
+function BackgroundGlow({ coverUrl }: { coverUrl: string }) {
+  return (
+    <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
+      <motion.div
+        key={coverUrl}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 0.4 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 1.5 }}
+        className="absolute inset-0"
+        style={{
+          background: `radial-gradient(circle at 20% 30%, var(--color-mint), transparent 40%),
+                       radial-gradient(circle at 80% 70%, var(--color-coral), transparent 40%),
+                       var(--color-night)`,
+        }}
+      />
+      {coverUrl !== '/icon.svg' && (
+        <motion.div
+          key={`glow-${coverUrl}`}
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 0.3, scale: 1.2 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 2 }}
+          className="absolute inset-0 blur-[100px] saturate-150"
+          style={{
+            backgroundImage: `url(${coverUrl})`,
+            backgroundSize: 'cover',
+            backgroundPosition: 'center',
+            filter: 'blur(100px) brightness(0.8)',
+          }}
+        />
+      )}
+    </div>
+  );
 }
 
 export default function App() {
@@ -73,7 +104,7 @@ export default function App() {
 
   const isAuthenticated = token.length > 0;
   const authHeaders = useMemo(() => ({'x-share-token': token}), [token]);
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const progress = duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0;
   const likedIds = useMemo(() => new Set(roomState.likedIds), [roomState.likedIds]);
 
   const filteredFiles = useMemo(() => {
@@ -83,27 +114,42 @@ export default function App() {
   }, [files, query]);
 
   async function loadStatus(activeToken = token) {
-    const response = await fetch(apiUrl('/api/status'), {
-      headers: activeToken ? {'x-share-token': activeToken} : undefined,
-    });
-    if (!response.ok) throw new Error('Status konnte nicht geladen werden.');
-    setStatus(await response.json());
+    try {
+      const response = await fetch(apiUrl('/api/status'), {
+        headers: activeToken ? {'x-share-token': activeToken} : undefined,
+      });
+      if (!response.ok) throw new Error('Status konnte nicht geladen werden.');
+      setStatus(await response.json());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Status-Fehler');
+      throw e;
+    }
   }
 
   async function loadFiles(activeToken = token) {
-    const response = await fetch(apiUrl('/api/files'), {headers: {'x-share-token': activeToken}});
-    if (!response.ok) throw new Error('Bibliothek konnte nicht geladen werden.');
-    const data = await response.json();
-    setFiles(data.files);
-    if (data.files.length > 0 && !currentFile) {
-      setCurrentFile(data.files[0]);
+    try {
+      const response = await fetch(apiUrl('/api/files'), {headers: {'x-share-token': activeToken}});
+      if (!response.ok) throw new Error('Bibliothek konnte nicht geladen werden.');
+      const data = await response.json();
+      setFiles(data.files);
+      if (data.files.length > 0 && !currentFile) {
+        setCurrentFile(data.files[0]);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Dateiladen-Fehler');
+      throw e;
     }
   }
 
   async function loadRoomState(activeToken = token) {
-    const response = await fetch(apiUrl('/api/state'), {headers: {'x-share-token': activeToken}});
-    if (!response.ok) throw new Error('Raumzustand konnte nicht geladen werden.');
-    setRoomState(await response.json());
+    try {
+      const response = await fetch(apiUrl('/api/state'), {headers: {'x-share-token': activeToken}});
+      if (!response.ok) throw new Error('Raumzustand konnte nicht geladen werden.');
+      setRoomState(await response.json());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'State-Fehler');
+      throw e;
+    }
   }
 
   useEffect(() => {
@@ -119,12 +165,17 @@ export default function App() {
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    const events = new EventSource(apiUrl(`/api/events?token=${encodeURIComponent(token)}`));
+    const events = new EventSource(apiUrl(`/api/events`));
     events.addEventListener('state', (event) => {
-      setRoomState(JSON.parse((event as MessageEvent).data));
+      try {
+        setRoomState(JSON.parse((event as MessageEvent).data));
+      } catch (e) {
+        console.error('SSE Parse Error:', e);
+      }
     });
     events.onerror = () => {
       events.close();
+      setError('SSE Verbindung unterbrochen.');
     };
 
     return () => events.close();
@@ -134,7 +185,7 @@ export default function App() {
     const audio = audioRef.current;
     if (!audio || !currentFile) return;
 
-    audio.src = apiUrl(`/api/stream/${currentFile.id}?token=${encodeURIComponent(token)}`);
+    audio.src = apiUrl(`/api/stream/${currentFile.id}`);
     audio.load();
     setCurrentTime(0);
     setDuration(0);
@@ -158,7 +209,7 @@ export default function App() {
     if (!('mediaSession' in navigator) || !currentFile) return;
 
     const artwork = [
-      {src: coverUrl(currentFile, token), sizes: '512x512', type: currentFile.hasArtwork ? 'image/jpeg' : 'image/svg+xml'},
+      {src: coverUrl(currentFile), sizes: '512x512', type: currentFile.hasArtwork ? 'image/jpeg' : 'image/svg+xml'},
     ];
 
     navigator.mediaSession.metadata = new MediaMetadata({
@@ -227,7 +278,7 @@ export default function App() {
 
   function togglePlay() {
     haptic();
-    setIsPlaying(!isPlaying);
+    setIsPlaying((prev) => !prev);
   }
 
   function skip(offset: number) {
@@ -270,27 +321,31 @@ export default function App() {
 
     setUpload({active: true, progress: 0, message: 'Upload startet...'});
 
-    for (let index = 0; index < selected.length; index += 1) {
-      const file = selected[index];
-      setUpload({active: true, progress: Math.round((index / selected.length) * 100), message: `${file.name} wird uebertragen...`});
-      const response = await fetch(apiUrl(`/api/upload?name=${encodeURIComponent(file.name)}`), {
-        method: 'POST',
-        headers: {
-          ...authHeaders,
-          'content-type': file.type || 'application/octet-stream',
-        },
-        body: file,
-      });
+    try {
+      for (let index = 0; index < selected.length; index += 1) {
+        const file = selected[index];
+        setUpload({active: true, progress: Math.round((index / selected.length) * 100), message: `${file.name} wird uebertragen...`});
+        const response = await fetch(apiUrl(`/api/upload?name=${encodeURIComponent(file.name)}`), {
+          method: 'POST',
+          headers: {
+            ...authHeaders,
+            'content-type': file.type || 'application/octet-stream',
+          },
+          body: file,
+        });
 
-      if (!response.ok) {
-        setUpload({active: false, progress: 0, message: `${file.name} konnte nicht hochgeladen werden.`});
-        return;
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error || `${file.name} konnte nicht hochgeladen werden.`);
+        }
       }
-    }
 
-    await loadFiles();
-    haptic();
-    setUpload({active: false, progress: 100, message: 'Bibliothek aktualisiert.'});
+      await loadFiles();
+      haptic();
+      setUpload({active: false, progress: 100, message: 'Bibliothek aktualisiert.'});
+    } catch (e) {
+      setUpload({active: false, progress: 0, message: e instanceof Error ? e.message : 'Upload fehlgeschlagen.'});
+    }
   }
 
   async function toggleLike(file: ApiFile) {
@@ -345,6 +400,7 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      <BackgroundGlow coverUrl={coverUrl(currentFile)} />
       <audio
         ref={audioRef}
         onEnded={() => void playNextFromQueue()}
@@ -356,7 +412,6 @@ export default function App() {
       <main className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-4 pb-44 pt-3 sm:px-6 lg:px-8">
         <NowPlayingHero
           file={currentFile}
-          token={token}
           isPlaying={isPlaying}
           currentTime={currentTime}
           duration={duration}
@@ -375,7 +430,6 @@ export default function App() {
               query={query}
               setQuery={setQuery}
               currentFile={currentFile}
-              token={token}
               isPlaying={isPlaying}
               likedIds={likedIds}
               onPlay={playFile}
@@ -389,7 +443,6 @@ export default function App() {
           {view === 'queue' && (
             <QueueView
               queue={roomState.queue}
-              token={token}
               onPlay={playFile}
               onRemove={(item) => void removeFromQueue(item.id)}
               onClear={() => void clearQueue()}
@@ -410,7 +463,6 @@ export default function App() {
         view={view}
         setView={changeView}
         file={currentFile}
-        token={token}
         isPlaying={isPlaying}
         queueCount={roomState.queue.length}
         progress={progress}
@@ -423,7 +475,6 @@ export default function App() {
         {isPlayerOpen && (
           <FullscreenPlayer
             file={currentFile}
-            token={token}
             isPlaying={isPlaying}
             currentTime={currentTime}
             duration={duration}
@@ -514,9 +565,8 @@ function Header({status, onLogout}: {status: ApiStatus | null; onLogout: () => v
   );
 }
 
-function NowPlayingHero({file, token, isPlaying, currentTime, duration, progress, onToggle, onSkip, onSeek}: {
+function NowPlayingHero({file, isPlaying, currentTime, duration, progress, onToggle, onSkip, onSeek}: {
   file: ApiFile | null;
-  token: string;
   isPlaying: boolean;
   currentTime: number;
   duration: number;
@@ -594,12 +644,11 @@ function Stat({icon, label, value}: {icon: React.ReactNode; label: string; value
   );
 }
 
-function LibraryView({files, query, setQuery, currentFile, token, isPlaying, likedIds, onPlay, onLike, onQueue, onRefresh, onOpenUpload}: {
+function LibraryView({files, query, setQuery, currentFile, isPlaying, likedIds, onPlay, onLike, onQueue, onRefresh, onOpenUpload}: {
   files: ApiFile[];
   query: string;
   setQuery: (value: string) => void;
   currentFile: ApiFile | null;
-  token: string;
   isPlaying: boolean;
   likedIds: Set<string>;
   onPlay: (file: ApiFile) => void;
@@ -637,9 +686,9 @@ function LibraryView({files, query, setQuery, currentFile, token, isPlaying, lik
       ) : (
         <div className="space-y-2">
           {files.map((file) => (
-            <div key={file.id} className="track-row">
+            <motion.div key={file.id} className="track-row" whileHover={{ scale: 1.01, backgroundColor: 'rgba(24, 32, 28, 0.8)' }} whileTap={{ scale: 0.99 }}>
               <button onClick={() => onPlay(file)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                <img src={coverUrl(file, token)} alt="" className="h-14 w-14 rounded-lg object-cover" />
+                <img src={coverUrl(file)} alt="" className="h-14 w-14 rounded-lg object-cover" />
                 <div className="min-w-0 flex-1">
                 <p className="truncate text-base font-black">{file.title}</p>
                 <p className="mt-1 truncate text-xs font-bold text-muted">{trackMeta(file)}</p>
@@ -651,7 +700,7 @@ function LibraryView({files, query, setQuery, currentFile, token, isPlaying, lik
               <button onClick={() => onQueue(file)} className={`track-play ${currentFile?.id === file.id && isPlaying ? 'is-playing' : ''}`} aria-label="Zur Queue hinzufuegen">
                 <ListMusic className="h-4 w-4" />
               </button>
-            </div>
+            </motion.div>
           ))}
         </div>
       )}
@@ -700,9 +749,8 @@ function UploadView({inputRef, upload, onFiles}: {
   );
 }
 
-function QueueView({queue, token, onPlay, onRemove, onClear}: {
+function QueueView({queue, onPlay, onRemove, onClear}: {
   queue: QueueItem[];
-  token: string;
   onPlay: (file: ApiFile) => void;
   onRemove: (item: QueueItem) => void;
   onClear: () => void;
@@ -728,10 +776,10 @@ function QueueView({queue, token, onPlay, onRemove, onClear}: {
       ) : (
         <div className="space-y-2">
           {queue.map((item, index) => (
-            <div key={item.id} className="track-row">
+            <motion.div key={item.id} className="track-row" whileHover={{ scale: 1.01, backgroundColor: 'rgba(24, 32, 28, 0.8)' }} whileTap={{ scale: 0.99 }}>
               <button onClick={() => onPlay(item.file)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
                 <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-soft text-sm font-black text-mint">{index + 1}</div>
-                <img src={coverUrl(item.file, token)} alt="" className="h-14 w-14 rounded-lg object-cover" />
+                <img src={coverUrl(item.file)} alt="" className="h-14 w-14 rounded-lg object-cover" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-base font-black">{item.file.title}</p>
                   <p className="mt-1 truncate text-xs font-bold text-muted">{trackMeta(item.file)}</p>
@@ -740,7 +788,7 @@ function QueueView({queue, token, onPlay, onRemove, onClear}: {
               <button onClick={() => onRemove(item)} className="track-play" aria-label="Aus Queue entfernen">
                 <Trash2 className="h-4 w-4" />
               </button>
-            </div>
+            </motion.div>
           ))}
         </div>
       )}
@@ -797,11 +845,10 @@ function TrustRow({icon, text}: {icon: React.ReactNode; text: string}) {
   );
 }
 
-function BottomDock({view, setView, file, token, isPlaying, queueCount, progress, onToggle, onSkip, onOpenPlayer}: {
+function BottomDock({view, setView, file, isPlaying, queueCount, progress, onToggle, onSkip, onOpenPlayer}: {
   view: View;
   setView: (view: View) => void;
   file: ApiFile | null;
-  token: string;
   isPlaying: boolean;
   queueCount: number;
   progress: number;
@@ -811,31 +858,33 @@ function BottomDock({view, setView, file, token, isPlaying, queueCount, progress
 }) {
   return (
     <footer className="bottom-dock">
-      {file && (
-        <div className="dock-player" role="button" tabIndex={0} onClick={onOpenPlayer} onKeyDown={(event) => event.key === 'Enter' && onOpenPlayer()}>
-          <img src={coverUrl(file, token)} alt="" className="h-11 w-11 rounded-lg object-cover" />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-black">{file.title}</p>
-            <p className="truncate text-[11px] font-bold text-muted">{trackMeta(file)}</p>
-            <div className="mt-2 h-1 overflow-hidden rounded-lg bg-line">
-              <div className="h-full bg-mint" style={{width: `${progress}%`}} />
+      <div className="dock-container">
+        {file && (
+          <div className="dock-player" role="button" tabIndex={0} onClick={onOpenPlayer} onKeyDown={(event) => event.key === 'Enter' && onOpenPlayer()}>
+            <img src={coverUrl(file)} alt="" className="h-11 w-11 rounded-lg object-cover" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-black">{file.title}</p>
+              <p className="truncate text-[11px] font-bold text-muted">{trackMeta(file)}</p>
+              <div className="mt-2 h-1 overflow-hidden rounded-lg bg-line">
+                <div className="h-full bg-mint" style={{width: `${progress}%`}} />
+              </div>
             </div>
+            <button onClick={(event) => { event.stopPropagation(); onSkip(-1); }} className="mini-button" aria-label="Zurueck">
+              <SkipBack className="h-4 w-4" />
+            </button>
+            <button onClick={(event) => { event.stopPropagation(); onToggle(); }} className="mini-button bg-mint text-night" aria-label={isPlaying ? 'Pausieren' : 'Abspielen'}>
+              {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 fill-current" />}
+            </button>
           </div>
-          <button onClick={(event) => { event.stopPropagation(); onSkip(-1); }} className="mini-button" aria-label="Zurueck">
-            <SkipBack className="h-4 w-4" />
-          </button>
-          <button onClick={(event) => { event.stopPropagation(); onToggle(); }} className="mini-button bg-mint text-night" aria-label={isPlaying ? 'Pausieren' : 'Abspielen'}>
-            {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 fill-current" />}
-          </button>
-        </div>
-      )}
+        )}
 
-      <nav className="dock-nav" aria-label="Hauptnavigation">
-        <NavButton active={view === 'library'} onClick={() => setView('library')} icon={<Library className="h-5 w-5" />} label="Musik" />
-        <NavButton active={view === 'queue'} onClick={() => setView('queue')} icon={<ListMusic className="h-5 w-5" />} label={`Queue ${queueCount}`} />
-        <NavButton active={view === 'upload'} onClick={() => setView('upload')} icon={<Plus className="h-5 w-5" />} label="Teilen" />
-        <NavButton active={view === 'room'} onClick={() => setView('room')} icon={<Shield className="h-5 w-5" />} label="Raum" />
-      </nav>
+        <nav className="dock-nav" aria-label="Hauptnavigation">
+          <NavButton active={view === 'library'} onClick={() => setView('library')} icon={<Library className="h-5 w-5" />} label="Musik" />
+          <NavButton active={view === 'queue'} onClick={() => setView('queue')} icon={<ListMusic className="h-5 w-5" />} label={`Queue ${queueCount}`} />
+          <NavButton active={view === 'upload'} onClick={() => setView('upload')} icon={<Plus className="h-5 w-5" />} label="Teilen" />
+          <NavButton active={view === 'room'} onClick={() => setView('room')} icon={<Shield className="h-5 w-5" />} label="Raum" />
+        </nav>
+      </div>
     </footer>
   );
 }
@@ -851,9 +900,8 @@ function trackMeta(file: ApiFile) {
   return `${type} - ${duration}${file.sizeLabel}`;
 }
 
-function FullscreenPlayer({file, token, isPlaying, currentTime, duration, progress, onClose, onToggle, onSkip, onSeek}: {
+function FullscreenPlayer({file, isPlaying, currentTime, duration, progress, onClose, onToggle, onSkip, onSeek}: {
   file: ApiFile | null;
-  token: string;
   isPlaying: boolean;
   currentTime: number;
   duration: number;
@@ -871,27 +919,37 @@ function FullscreenPlayer({file, token, isPlaying, currentTime, duration, progre
       exit={{opacity: 0, y: 80}}
       transition={{type: 'spring', damping: 28, stiffness: 260}}
     >
-      <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-5 pb-8 pt-4">
-        <div className="mb-5 flex items-center justify-between">
-          <button onClick={onClose} className="icon-button" aria-label="Player schliessen">
+      <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-5 pb-8 pt-4 relative">
+        <div className="absolute inset-0 -z-10 overflow-hidden rounded-3xl pointer-events-none">
+          <motion.img
+            src={coverUrl(file)}
+            className="h-full w-full object-cover blur-3xl scale-110 opacity-40"
+            animate={{ scale: [1.1, 1.2, 1.1] }}
+            transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-night/20 via-night/60 to-night" />
+        </div>
+
+        <div className="mb-5 flex items-center justify-between relative z-10">
+          <button onClick={onClose} className="icon-button bg-soft/50" aria-label="Player schliessen">
             <X className="h-5 w-5" />
           </button>
-          <p className="text-sm font-black text-muted">JT-MP3</p>
+          <p className="text-sm font-black text-muted uppercase tracking-widest">Jetzt abspielen</p>
           <div className="h-11 w-11" />
         </div>
 
-        <div className="flex flex-1 flex-col justify-center">
-          <div className="cover-wrap mx-auto w-full max-w-sm">
-            <img src={coverUrl(file, token)} alt="" className="cover-art" />
+        <div className="flex flex-1 flex-col justify-center relative z-10">
+          <div className="cover-wrap mx-auto w-full max-w-sm shadow-2xl transition-transform duration-500 hover:scale-[1.02]">
+            <img src={coverUrl(file)} alt="" className="cover-art" />
           </div>
 
-          <div className="mt-8 text-center">
-            <p className="mb-2 text-sm font-bold text-mint">{file?.artist || 'Privater Raum'}</p>
-            <h2 className="line-clamp-2 text-4xl font-black leading-tight">{file?.title ?? 'Kein Track ausgewaehlt'}</h2>
-            <p className="mt-3 truncate text-sm font-bold text-muted">{file ? trackMeta(file) : 'Waehle Musik aus deiner Bibliothek.'}</p>
+          <div className="mt-12 text-center">
+            <p className="mb-2 text-sm font-bold text-mint uppercase tracking-wider">{file?.artist || 'Privater Raum'}</p>
+            <h2 className="line-clamp-2 text-5xl font-black leading-tight tracking-tight">{file?.title ?? 'Kein Track ausgewaehlt'}</h2>
+            <p className="mt-4 truncate text-lg font-medium text-muted opacity-80">{file ? trackMeta(file) : 'Waehle Musik aus deiner Bibliothek.'}</p>
           </div>
 
-          <div className="mt-8">
+          <div className="mt-12 max-w-md mx-auto w-full">
             <input
               type="range"
               min="0"
@@ -901,21 +959,21 @@ function FullscreenPlayer({file, token, isPlaying, currentTime, duration, progre
               className="seek-slider"
               aria-label="Position"
             />
-            <div className="mt-2 flex justify-between text-xs font-bold text-muted">
+            <div className="mt-3 flex justify-between text-xs font-bold text-muted px-1">
               <span>{formatTime(currentTime)}</span>
               <span>{formatTime(duration)}</span>
             </div>
           </div>
 
-          <div className="mt-8 flex items-center justify-center gap-5">
-            <button onClick={() => onSkip(-1)} className="round-button h-14 w-14" aria-label="Zurueck">
-              <SkipBack className="h-6 w-6" />
+          <div className="mt-12 flex items-center justify-center gap-8">
+            <button onClick={() => onSkip(-1)} className="round-button h-16 w-16 bg-soft/40 backdrop-blur-md" aria-label="Zurueck">
+              <SkipBack className="h-7 w-7" />
             </button>
-            <button onClick={onToggle} disabled={!file} className="play-button h-20 w-20" aria-label={isPlaying ? 'Pausieren' : 'Abspielen'}>
-              {isPlaying ? <Pause className="h-10 w-10" /> : <Play className="h-10 w-10 fill-current" />}
+            <button onClick={onToggle} disabled={!file} className="play-button h-24 w-24 shadow-2xl scale-110" aria-label={isPlaying ? 'Pausieren' : 'Abspielen'}>
+              {isPlaying ? <Pause className="h-12 w-12" /> : <Play className="h-12 w-12 fill-current" />}
             </button>
-            <button onClick={() => onSkip(1)} className="round-button h-14 w-14" aria-label="Weiter">
-              <SkipForward className="h-6 w-6" />
+            <button onClick={() => onSkip(1)} className="round-button h-16 w-16 bg-soft/40 backdrop-blur-md" aria-label="Weiter">
+              <SkipForward className="h-7 w-7" />
             </button>
           </div>
         </div>

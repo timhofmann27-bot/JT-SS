@@ -4,12 +4,13 @@ services:
     container_name: jt-mp3
     restart: unless-stopped
     environment:
-      SHARE_TOKEN: "change-me-local-room-key"
-      ROOM_NAME: "JT-MP3 Privat"
-      MAX_PEERS: "50"
-      PORT: "3001"
-      MEDIA_DIR: "/data/media"
-      DATA_DIR: "/data/state"
+      - SHARE_TOKEN=${SHARE_TOKEN}
+      - ROOM_NAME=${ROOM_NAME}
+      - MAX_PEERS=${MAX_PEERS}
+      - PORT=${PORT}
+      - MEDIA_DIR=${MEDIA_DIR}
+      - DATA_DIR=${DATA_DIR}
+      - MAX_UPLOAD_SIZE=${MAX_UPLOAD_SIZE}
     ports:
       - "3001:3001"
     volumes:

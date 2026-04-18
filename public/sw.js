@@ -22,6 +22,20 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Only cache clearly static assets
+  const isStaticAsset =
+    SHELL_ASSETS.includes(url.pathname) ||
+    url.pathname.endsWith('.svg') ||
+    url.pathname.endsWith('.png') ||
+    url.pathname.endsWith('.jpg') ||
+    url.pathname.endsWith('.jpeg') ||
+    url.pathname.endsWith('.webp') ||
+    url.pathname.endsWith('.webmanifest');
+
+  if (!isStaticAsset) {
+    return;
+  }
+
   event.respondWith(
     fetch(event.request)
       .then((response) => {
