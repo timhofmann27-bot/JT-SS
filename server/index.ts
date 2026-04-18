@@ -75,7 +75,7 @@ function generateCode(length = 8) {
   return crypto.randomBytes(length).toString('hex').slice(0, length).toUpperCase();
 }
 
-function requireAuth(request: express.Request, response: express.Response, next: express.NextFunction) {
+function requireUserAuth(request: express.Request, response: express.Response, next: express.NextFunction) {
   const token = request.headers['x-auth-token'] as string;
   if (!token) {
     response.status(401).json({ error: 'auth required' });
@@ -177,7 +177,7 @@ function getToken(request: express.Request) {
   return headerToken || '';
 }
 
-function requireAuth(request: express.Request, response: express.Response, next: express.NextFunction) {
+function requireShareToken(request: express.Request, response: express.Response, next: express.NextFunction) {
   const candidate = getToken(request);
   const expected = Buffer.from(shareToken);
   const actual = Buffer.from(candidate);
@@ -379,7 +379,7 @@ async function findFile(id: string) {
   return {...file, absolutePath: resolveMediaPath(file.name)};
 }
 
-app.get('/api/status', requireAuth, (_request, response) => {
+app.get('/api/status', requireShareToken, (_request, response) => {
   response.json({
     roomName,
     host: publicHost(),
@@ -388,7 +388,7 @@ app.get('/api/status', requireAuth, (_request, response) => {
   });
 });
 
-app.get('/api/files', requireAuth, async (_request, response, next) => {
+app.get('/api/files', requireShareToken, async (_request, response, next) => {
   try {
     response.json({files: await listFiles()});
   } catch (error) {
@@ -396,7 +396,7 @@ app.get('/api/files', requireAuth, async (_request, response, next) => {
   }
 });
 
-app.get('/api/state', requireAuth, async (_request, response, next) => {
+app.get('/api/state', requireShareToken, async (_request, response, next) => {
   try {
     response.json(await roomState());
   } catch (error) {
@@ -404,7 +404,7 @@ app.get('/api/state', requireAuth, async (_request, response, next) => {
   }
 });
 
-app.get('/api/events', requireAuth, async (request, response, next) => {
+app.get('/api/events', requireShareToken, async (request, response, next) => {
   try {
     response.writeHead(200, {
       'content-type': 'text/event-stream',
@@ -430,7 +430,7 @@ app.get('/api/events', requireAuth, async (request, response, next) => {
   }
 });
 
-app.post('/api/likes/:id', requireAuth, async (request, response, next) => {
+app.post('/api/likes/:id', requireShareToken, async (request, response, next) => {
   try {
     const file = await findFile(request.params.id);
     if (!file) {
@@ -455,7 +455,7 @@ app.post('/api/likes/:id', requireAuth, async (request, response, next) => {
   }
 });
 
-app.post('/api/queue', requireAuth, async (request, response, next) => {
+app.post('/api/queue', requireShareToken, async (request, response, next) => {
   try {
     const fileId = typeof request.body?.fileId === 'string' ? request.body.fileId : '';
     const file = await findFile(fileId);
@@ -478,7 +478,7 @@ app.post('/api/queue', requireAuth, async (request, response, next) => {
   }
 });
 
-app.delete('/api/queue/:id', requireAuth, async (request, response, next) => {
+app.delete('/api/queue/:id', requireShareToken, async (request, response, next) => {
   try {
     const state = await readState();
     await writeState({
@@ -491,7 +491,7 @@ app.delete('/api/queue/:id', requireAuth, async (request, response, next) => {
   }
 });
 
-app.post('/api/queue/clear', requireAuth, async (_request, response, next) => {
+app.post('/api/queue/clear', requireShareToken, async (_request, response, next) => {
   try {
     const state = await readState();
     await writeState({...state, queue: []});
@@ -548,7 +548,7 @@ app.post('/api/auth/register', (request, response) => {
   response.json({ token: password, user: { id: newUser.id, username: newUser.username, role: newUser.role } });
 });
 
-app.get('/api/auth/me', requireAuth, (request, response) => {
+app.get('/api/auth/me', requireShareToken, (request, response) => {
   const user = request.headers['x-user'] as User;
   response.json({ id: user.id, username: user.username, role: user.role });
 });
@@ -617,7 +617,7 @@ app.get('/api/health', (_request, response) => {
   response.json({ok: true, name: 'StreamSync'});
 });
 
-app.get('/api/art/:id', requireAuth, async (request, response, next) => {
+app.get('/api/art/:id', requireShareToken, async (request, response, next) => {
   try {
     const file = await findFile(request.params.id);
     if (!file) {
@@ -669,7 +669,7 @@ app.get('/api/art/:id', requireAuth, async (request, response, next) => {
   }
 });
 
-app.post('/api/upload', requireAuth, async (request, response, next) => {
+app.post('/api/upload', requireShareToken, async (request, response, next) => {
   try {
     const originalName = typeof request.query.name === 'string' ? request.query.name : '';
     const extension = path.extname(originalName).toLowerCase();
@@ -722,7 +722,7 @@ app.post('/api/upload', requireAuth, async (request, response, next) => {
   }
 });
 
-app.get('/api/stream/:id', requireAuth, async (request, response, next) => {
+app.get('/api/stream/:id', requireShareToken, async (request, response, next) => {
   try {
     const file = await findFile(request.params.id);
     if (!file) {

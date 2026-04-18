@@ -1,19 +1,18 @@
-jt-mp3.pro {
+jt-mp3.pro:8443 {
     encode zstd gzip
 
-    # Security headers
     header {
         X-Frame-Options SAMEORIGIN
         X-Content-Type-Options nosniff
         Referrer-Policy strict-origin-when-cross-origin
-        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' wss: https:"
     }
 
     reverse_proxy app:3001
     try_files {path} /index.html
 
-    tls admin@jt-mp3.pro
+    tls internal
 }
 
-http_port 80
-redir http://jt-mp3.pro https://jt-mp3.pro 307
+:8080 {
+    redir https://jt-mp3.pro:8443{uri}
+}
