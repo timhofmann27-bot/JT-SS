@@ -22,5 +22,23 @@ export default defineConfig(({mode}) => {
         },
       },
     },
+    build: {
+      target: 'es2020',
+      minify: 'esbuild',
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom'],
+            'vendor-motion': ['motion'],
+            'vendor-lucide': ['lucide-react'],
+          },
+        },
+      },
+      sourcemap: false,
+      chunkSizeWarningLimit: 500,
+    },
+    optimizeDeps: {
+      include: ['react', 'react-dom', 'motion', 'lucide-react'],
+    },
   };
 });

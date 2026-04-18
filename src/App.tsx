@@ -1,4 +1,4 @@
-import React, {useEffect, useMemo, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {
   AlertCircle,
   CheckCircle2,
@@ -118,7 +118,12 @@ export default function App() {
   const filteredFiles = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return files;
-    return files.filter((file) => file.title.toLowerCase().includes(needle) || file.name.toLowerCase().includes(needle));
+    return files.filter((file) =>
+      file.title.toLowerCase().includes(needle) ||
+      file.name.toLowerCase().includes(needle) ||
+      file.artist?.toLowerCase().includes(needle) ||
+      file.album?.toLowerCase().includes(needle)
+    );
   }, [files, query]);
 
   async function loadStatus(activeToken = token) {
@@ -295,7 +300,7 @@ export default function App() {
     setIsPlaying((prev) => !prev);
   }
 
-  function skip(offset: number) {
+  const skip = useCallback((offset: number) => {
     if (files.length === 0 || !currentFile) return;
     haptic();
     let nextIndex: number;
@@ -309,28 +314,28 @@ export default function App() {
     }
     setCurrentFile(files[nextIndex]);
     setIsPlaying(true);
-  }
+  }, [files, currentFile, shuffle]);
 
-  function toggleShuffle() {
+  const toggleShuffle = useCallback(() => {
     haptic();
     setShuffle((prev) => !prev);
-  }
+  }, []);
 
-  function toggleRepeat() {
+  const toggleRepeat = useCallback(() => {
     haptic();
     setRepeat((prev) => {
       if (prev === 'off') return 'all';
       if (prev === 'all') return 'one';
       return 'off';
     });
-  }
+  }, []);
 
-  function changeVolume(value: number) {
+  const changeVolume = useCallback((value: number) => {
     const audio = audioRef.current;
     if (!audio) return;
     audio.volume = value;
     setVolume(value);
-  }
+  }, []);
 
   async function playNextFromQueue() {
     const next = roomState.queue[0];

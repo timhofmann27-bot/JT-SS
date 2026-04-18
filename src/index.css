@@ -184,6 +184,15 @@
     transform: scale(0.95);
   }
 
+  .track-row,
+  .round-button,
+  .play-button,
+  .dock-nav-button {
+    transform: translateZ(0);
+    will-change: transform;
+    backface-visibility: hidden;
+  }
+
   .cover-wrap {
     aspect-ratio: 1;
     border-radius: 12px;
