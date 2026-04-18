@@ -15,8 +15,12 @@ import {
   Play,
   Plus,
   RefreshCcw,
+  Repeat,
+  Repeat1,
   Search,
+  Settings,
   Shield,
+  Shuffle,
   SkipBack,
   SkipForward,
   Upload,
@@ -24,6 +28,7 @@ import {
   Users,
   Wifi,
   X,
+  Volume2,
 } from 'lucide-react';
 import {AnimatePresence, motion} from 'motion/react';
 import type {ApiFile, ApiStatus, QueueItem, RoomState, UploadState, View} from './types';
@@ -99,6 +104,9 @@ export default function App() {
   const [error, setError] = useState('');
   const [isPlayerOpen, setIsPlayerOpen] = useState(false);
   const [upload, setUpload] = useState<UploadState>({active: false, progress: 0, message: ''});
+  const [shuffle, setShuffle] = useState(false);
+  const [repeat, setRepeat] = useState<'off' | 'all' | 'one'>('off');
+  const [volume, setVolume] = useState(1);
   const audioRef = useRef<HTMLAudioElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -206,6 +214,12 @@ export default function App() {
   }, [isPlaying]);
 
   useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.volume = volume;
+  }, [volume]);
+
+  useEffect(() => {
     if (!('mediaSession' in navigator) || !currentFile) return;
 
     const artwork = [
@@ -284,15 +298,52 @@ export default function App() {
   function skip(offset: number) {
     if (files.length === 0 || !currentFile) return;
     haptic();
-    const index = files.findIndex((file) => file.id === currentFile.id);
-    const nextIndex = (index + offset + files.length) % files.length;
+    let nextIndex: number;
+    if (shuffle) {
+      do {
+        nextIndex = Math.floor(Math.random() * files.length);
+      } while (files.length > 1 && nextIndex === files.findIndex((f) => f.id === currentFile.id));
+    } else {
+      const index = files.findIndex((file) => file.id === currentFile.id);
+      nextIndex = (index + offset + files.length) % files.length;
+    }
     setCurrentFile(files[nextIndex]);
     setIsPlaying(true);
+  }
+
+  function toggleShuffle() {
+    haptic();
+    setShuffle((prev) => !prev);
+  }
+
+  function toggleRepeat() {
+    haptic();
+    setRepeat((prev) => {
+      if (prev === 'off') return 'all';
+      if (prev === 'all') return 'one';
+      return 'off';
+    });
+  }
+
+  function changeVolume(value: number) {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.volume = value;
+    setVolume(value);
   }
 
   async function playNextFromQueue() {
     const next = roomState.queue[0];
     if (!next) {
+      if (repeat === 'one') {
+        setCurrentFile(currentFile);
+        setIsPlaying(true);
+        return;
+      }
+      if (repeat === 'all' || files.length === 0) {
+        skip(1);
+        return;
+      }
       skip(1);
       return;
     }
@@ -419,6 +470,12 @@ export default function App() {
           onToggle={togglePlay}
           onSkip={skip}
           onSeek={seek}
+          shuffle={shuffle}
+          repeat={repeat}
+          volume={volume}
+          onShuffle={toggleShuffle}
+          onRepeat={toggleRepeat}
+          onVolume={changeVolume}
         />
 
         <QuickStats status={status} fileCount={files.length} />
@@ -469,6 +526,8 @@ export default function App() {
         onToggle={togglePlay}
         onSkip={skip}
         onOpenPlayer={() => setIsPlayerOpen(true)}
+        shuffle={shuffle}
+        repeat={repeat}
       />
 
       <AnimatePresence>
@@ -565,7 +624,7 @@ function Header({status, onLogout}: {status: ApiStatus | null; onLogout: () => v
   );
 }
 
-function NowPlayingHero({file, isPlaying, currentTime, duration, progress, onToggle, onSkip, onSeek}: {
+function NowPlayingHero({file, isPlaying, currentTime, duration, progress, onToggle, onSkip, onSeek, shuffle, repeat, volume, onShuffle, onRepeat, onVolume}: {
   file: ApiFile | null;
   isPlaying: boolean;
   currentTime: number;
@@ -574,12 +633,25 @@ function NowPlayingHero({file, isPlaying, currentTime, duration, progress, onTog
   onToggle: () => void;
   onSkip: (offset: number) => void;
   onSeek: (value: number) => void;
+  shuffle: boolean;
+  repeat: 'off' | 'all' | 'one';
+  volume: number;
+  onShuffle: () => void;
+  onRepeat: () => void;
+  onVolume: (value: number) => void;
 }) {
   return (
     <section className="surface overflow-hidden p-4 sm:p-5">
       <div className="grid gap-4 sm:grid-cols-[12rem_1fr] sm:items-end">
-        <div className="cover-wrap mx-auto w-full max-w-56 sm:mx-0">
+        <div className="cover-wrap mx-auto w-full max-w-56 sm:mx-0 relative group">
           <img src={coverUrl(file, token)} alt="" className="cover-art" />
+          <button
+            onClick={onToggle}
+            disabled={!file}
+            className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm"
+          >
+            {isPlaying ? <Pause className="h-12 w-12" /> : <Play className="h-12 w-12 fill-current" />}
+          </button>
         </div>
 
         <div className="min-w-0">
@@ -607,7 +679,14 @@ function NowPlayingHero({file, isPlaying, currentTime, duration, progress, onTog
             </div>
           </div>
 
-          <div className="mt-5 flex items-center justify-center gap-3 sm:justify-start">
+          <div className="mt-5 flex items-center justify-center sm:justify-start gap-2">
+            <button
+              onClick={onShuffle}
+              className={`round-button ${shuffle ? 'text-mint border-mint' : ''}`}
+              aria-label="Zufallswiedergabe"
+            >
+              <Shuffle className="h-4 w-4" />
+            </button>
             <button onClick={() => onSkip(-1)} className="round-button" aria-label="Zurueck">
               <SkipBack className="h-5 w-5" />
             </button>
@@ -617,6 +696,26 @@ function NowPlayingHero({file, isPlaying, currentTime, duration, progress, onTog
             <button onClick={() => onSkip(1)} className="round-button" aria-label="Weiter">
               <SkipForward className="h-5 w-5" />
             </button>
+            <button
+              onClick={onRepeat}
+              className={`round-button ${repeat !== 'off' ? 'text-mint border-mint' : ''}`}
+              aria-label="Wiederholen"
+            >
+              {repeat === 'one' ? <Repeat1 className="h-4 w-4" /> : <Repeat className="h-4 w-4" />}
+            </button>
+
+            <div className="ml-3 flex items-center gap-2">
+              <Volume2 className="h-4 w-4 text-muted" />
+              <input
+                type="range"
+                min="0"
+                max="100"
+                value={volume * 100}
+                onChange={(event) => onVolume(Number(event.target.value) / 100)}
+                className="w-20 h-1 accent-mint"
+                aria-label="Lautstaerke"
+              />
+            </div>
           </div>
         </div>
       </div>
@@ -845,7 +944,7 @@ function TrustRow({icon, text}: {icon: React.ReactNode; text: string}) {
   );
 }
 
-function BottomDock({view, setView, file, isPlaying, queueCount, progress, onToggle, onSkip, onOpenPlayer}: {
+function BottomDock({view, setView, file, isPlaying, queueCount, progress, onToggle, onSkip, onOpenPlayer, shuffle, repeat}: {
   view: View;
   setView: (view: View) => void;
   file: ApiFile | null;
@@ -855,27 +954,52 @@ function BottomDock({view, setView, file, isPlaying, queueCount, progress, onTog
   onToggle: () => void;
   onSkip: (offset: number) => void;
   onOpenPlayer: () => void;
+  shuffle: boolean;
+  repeat: 'off' | 'all' | 'one';
 }) {
   return (
     <footer className="bottom-dock">
       <div className="dock-container">
         {file && (
-          <div className="dock-player" role="button" tabIndex={0} onClick={onOpenPlayer} onKeyDown={(event) => event.key === 'Enter' && onOpenPlayer()}>
-            <img src={coverUrl(file)} alt="" className="h-11 w-11 rounded-lg object-cover" />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-black">{file.title}</p>
-              <p className="truncate text-[11px] font-bold text-muted">{trackMeta(file)}</p>
-              <div className="mt-2 h-1 overflow-hidden rounded-lg bg-line">
-                <div className="h-full bg-mint" style={{width: `${progress}%`}} />
+          <motion.div
+            className="dock-player cursor-pointer"
+            role="button"
+            tabIndex={0}
+            onClick={onOpenPlayer}
+            onKeyDown={(event) => event.key === 'Enter' && onOpenPlayer()}
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+          >
+            <div className="relative">
+              <img src={coverUrl(file)} alt="" className="h-14 w-14 rounded-xl object-cover shadow-lg" />
+              <div className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-mint text-night">
+                {isPlaying ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3 fill-current" />}
               </div>
             </div>
-            <button onClick={(event) => { event.stopPropagation(); onSkip(-1); }} className="mini-button" aria-label="Zurueck">
-              <SkipBack className="h-4 w-4" />
-            </button>
-            <button onClick={(event) => { event.stopPropagation(); onToggle(); }} className="mini-button bg-mint text-night" aria-label={isPlaying ? 'Pausieren' : 'Abspielen'}>
-              {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 fill-current" />}
-            </button>
-          </div>
+            <div className="min-w-0 flex-1 px-2">
+              <p className="truncate text-sm font-bold">{file.title}</p>
+              <p className="truncate text-xs text-muted">{trackMeta(file)}</p>
+              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-soft">
+                <motion.div
+                  className="h-full rounded-full bg-gradient-to-r from-mint to-cyan-400"
+                  style={{ width: `${progress}%` }}
+                  initial={{ width: 0 }}
+                  animate={{ width: `${progress}%` }}
+                  transition={{ duration: 0.3 }}
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              {shuffle && <Shuffle className="h-3 w-3 text-mint" />}
+              {repeat !== 'off' && <Repeat className={`h-3 w-3 ${repeat === 'one' ? 'text-mint' : 'text-muted'}`} />}
+              <button onClick={(event) => { event.stopPropagation(); onSkip(-1); }} className="mini-button" aria-label="Zurueck">
+                <SkipBack className="h-4 w-4" />
+              </button>
+              <button onClick={(event) => { event.stopPropagation(); onToggle(); }} className="mini-button bg-mint text-night" aria-label={isPlaying ? 'Pausieren' : 'Abspielen'}>
+                {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 fill-current" />}
+              </button>
+            </div>
+          </motion.div>
         )}
 
         <nav className="dock-nav" aria-label="Hauptnavigation">
