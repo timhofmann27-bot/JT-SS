@@ -1,23 +1,52 @@
 services:
-  stream-sync:
+  app:
     build: .
     container_name: stream-sync
     restart: unless-stopped
     environment:
-      - SHARE_TOKEN=${SHARE_TOKEN:-your-secret-token-here}
+      - SHARE_TOKEN=${SHARE_TOKEN:?SHARE_TOKEN required}
+      - ADMIN_SECRET=${ADMIN_SECRET:?ADMIN_SECRET required}
       - ROOM_NAME=${ROOM_NAME:-StreamSync}
       - MAX_PEERS=${MAX_PEERS:-50}
-      - PORT=${PORT:-3001}
+      - PORT=3001
       - MEDIA_DIR=/data/media
       - DATA_DIR=/data/state
       - MAX_UPLOAD_SIZE=${MAX_UPLOAD_SIZE:-100MB}
-    ports:
-      - "3001:3001"
+      - VITE_API_BASE=/api
     volumes:
-      - ./media:/data/media
-      - ./data:/data/state
+      - media:/data/media
+      - state:/data/state
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3
+    networks:
+      - stream-network
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: stream-sync-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy-data:/data
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
+      - EMAIL=${EMAIL:-admin@example.com}
+    depends_on:
+      - app
+    networks:
+      - stream-network
+
+networks:
+  stream-network:
+    driver: bridge
+
+volumes:
+  media:
+  state:
+  caddy-data:
