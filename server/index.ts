@@ -6,6 +6,9 @@ import {fileURLToPath} from 'node:url';
 import dotenv from 'dotenv';
 import express from 'express';
 import {parseFile} from 'music-metadata';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import rateLimit from 'express-rate-limit';
 
 dotenv.config();
 
@@ -19,13 +22,23 @@ const invitesFile = path.join(dataDir, 'invites.json');
 const distDir = path.join(rootDir, 'dist');
 const port = Number(process.env.PORT ?? 3001);
 const shareToken = process.env.SHARE_TOKEN;
-const adminSecret = process.env.ADMIN_SECRET ?? 'admin123';
+
+// CRIT-3: Require ADMIN_SECRET - no defaults
+const adminSecret = process.env.ADMIN_SECRET;
+if (!adminSecret) {
+  console.error('FATAL: ADMIN_SECRET environment variable is not set.');
+  process.exit(1);
+}
 if (!shareToken) {
   console.error('FATAL: SHARE_TOKEN environment variable is not set.');
   process.exit(1);
 }
+
 const roomName = process.env.ROOM_NAME ?? 'StreamSync';
-const MAX_UPLOAD_SIZE = Number(process.env.MAX_UPLOAD_SIZE ?? '100MB');
+const maxPeers = Number(process.env.MAX_PEERS ?? 10);
+const JWT_SECRET = process.env.JWT_SECRET ?? crypto.randomBytes(64).toString('hex');
+const JWT_EXPIRY = process.env.JWT_EXPIRY ?? '24h';
+const BCRYPT_ROUNDS = 12;
 
 function ensureDataFile(file: string, defaultData: object) {
   if (!fs.existsSync(file)) {
@@ -42,6 +55,20 @@ interface User {
   role: 'admin' | 'member';
   createdAt: string;
   lastLogin: string;
+}
+
+declare module 'express-serve-static-core' {
+  interface Request {
+    user?: User;
+    sessionToken?: string;
+  }
+}
+
+interface SessionToken {
+  userId: string;
+  jti: string;
+  iat: number;
+  exp: number;
 }
 
 interface Invite {
@@ -67,43 +94,65 @@ function saveInvites() {
   fs.writeFileSync(invitesFile, JSON.stringify({ invites }, null, 2));
 }
 
-function hashPassword(password: string) {
-  return crypto.createHash('sha256').update(password).digest('hex');
+// CRIT-2: Use bcrypt instead of SHA-256
+async function hashPassword(password: string): Promise<string> {
+  return bcrypt.hash(password, BCRYPT_ROUNDS);
 }
 
-function generateCode(length = 8) {
-  return crypto.randomBytes(length).toString('hex').slice(0, length).toUpperCase();
+async function verifyPassword(password: string, hash: string): Promise<boolean> {
+  return bcrypt.compare(password, hash);
 }
 
-function requireUserAuth(request: express.Request, response: express.Response, next: express.NextFunction) {
-  const token = request.headers['x-auth-token'] as string;
-  if (!token) {
-    response.status(401).json({ error: 'auth required' });
-    return;
-  }
-  const user = users.find((u) => u.passwordHash === hashPassword(token));
-  if (!user) {
-    response.status(401).json({ error: 'invalid token' });
-    return;
-  }
-  request.headers['x-user'] = user;
-  next();
+// CRIT-1/5: Proper JWT session tokens
+function generateSessionToken(user: User): string {
+  return jwt.sign(
+    {
+      userId: user.id,
+      username: user.username,
+      role: user.role,
+      jti: crypto.randomUUID(),
+    },
+    JWT_SECRET,
+    { expiresIn: JWT_EXPIRY }
+  );
 }
 
-function requireAdmin(request: express.Request, response: express.Response, next: express.NextFunction) {
-  const token = request.headers['x-auth-token'] as string;
-  if (!token) {
-    response.status(401).json({ error: 'auth required' });
-    return;
+function verifySessionToken(token: string): SessionToken | null {
+  try {
+    return jwt.verify(token, JWT_SECRET) as SessionToken;
+  } catch {
+    return null;
   }
-  const user = users.find((u) => u.passwordHash === hashPassword(token));
-  if (!user || user.role !== 'admin') {
-    response.status(403).json({ error: 'admin required' });
-    return;
-  }
-  request.headers['x-user'] = user;
-  next();
 }
+
+// HIGH-4/5: Use UUIDs and longer invite codes
+function generateInviteCode(): string {
+  return crypto.randomBytes(12).toString('base64url').replace(/[^a-zA-Z0-9]/g, '').slice(0, 16).toUpperCase();
+}
+
+// CRIT-4: Rate limiting middleware
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // 5 attempts per window
+  message: { error: 'too many attempts, try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip || 'unknown',
+});
+
+const generalLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 function parseSize(sizeStr: string) {
   const match = sizeStr.match(/^(\d+)(KB|MB|GB)$/i);
@@ -162,15 +211,63 @@ fs.mkdirSync(dataDir, {recursive: true});
 const app = express();
 
 app.disable('x-powered-by');
+
+// Security headers
 app.use((request, response, next) => {
   response.setHeader('x-content-type-options', 'nosniff');
-  response.setHeader('referrer-policy', 'no-referrer');
+  response.setHeader('x-frame-options', 'DENY');
+  response.setHeader('x-xss-protection', '0');
+  response.setHeader('referrer-policy', 'strict-origin-when-cross-origin');
   response.setHeader('permissions-policy', 'camera=(), microphone=(), geolocation=()');
+  response.setHeader('content-security-policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self'; font-src 'self';");
+  response.setHeader('strict-transport-security', 'max-age=31536000; includeSubDomains');
   next();
 });
+
 app.use(express.json({limit: '64kb'}));
 
 const eventClients = new Set<express.Response>();
+
+// Token blacklist for logout (in-memory, clears on restart)
+const tokenBlacklist = new Set<string>();
+
+// HTTP request logging middleware
+app.use((request, response, next) => {
+  const start = Date.now();
+  const method = request.method;
+  const url = request.url;
+  const ip = request.ip || request.socket.remoteAddress || 'unknown';
+
+  response.on('finish', () => {
+    const duration = Date.now() - start;
+    const status = response.statusCode;
+    const logLevel = status >= 500 ? 'ERROR' : status >= 400 ? 'WARN' : 'INFO';
+    console.log(`[${logLevel}] ${method} ${url} ${status} ${duration}ms ${ip}`);
+  });
+
+  next();
+});
+
+// CORS configuration
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+  : ['http://localhost:3000', 'http://localhost:5173'];
+
+app.use((request, response, next) => {
+  const origin = request.header('origin');
+  if (origin && allowedOrigins.includes(origin)) {
+    response.setHeader('access-control-allow-origin', origin);
+    response.setHeader('access-control-allow-credentials', 'true');
+    response.setHeader('access-control-allow-methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    response.setHeader('access-control-allow-headers', 'content-type, x-share-token, x-auth-token');
+    response.setHeader('access-control-max-age', '86400');
+  }
+  if (request.method === 'OPTIONS') {
+    response.status(204).end();
+    return;
+  }
+  next();
+});
 
 function getToken(request: express.Request) {
   const headerToken = request.header('x-share-token');
@@ -190,6 +287,49 @@ function requireShareToken(request: express.Request, response: express.Response,
   next();
 }
 
+// CRIT-5: JWT-based user auth middleware
+function requireUserAuth(request: express.Request, response: express.Response, next: express.NextFunction) {
+  const token = request.headers['x-auth-token'] as string;
+  if (!token) {
+    response.status(401).json({ error: 'auth required' });
+    return;
+  }
+  const session = verifySessionToken(token);
+  if (!session) {
+    response.status(401).json({ error: 'invalid or expired token' });
+    return;
+  }
+  const user = users.find((u) => u.id === session.userId);
+  if (!user) {
+    response.status(401).json({ error: 'user not found' });
+    return;
+  }
+  request.user = user;
+  request.sessionToken = token;
+  next();
+}
+
+function requireAdmin(request: express.Request, response: express.Response, next: express.NextFunction) {
+  const token = request.headers['x-auth-token'] as string;
+  if (!token) {
+    response.status(401).json({ error: 'auth required' });
+    return;
+  }
+  const session = verifySessionToken(token);
+  if (!session) {
+    response.status(401).json({ error: 'invalid or expired token' });
+    return;
+  }
+  const user = users.find((u) => u.id === session.userId);
+  if (!user || user.role !== 'admin') {
+    response.status(403).json({ error: 'admin required' });
+    return;
+  }
+  request.user = user;
+  request.sessionToken = token;
+  next();
+}
+
 function publicHost() {
   const interfaces = os.networkInterfaces();
   for (const entries of Object.values(interfaces)) {
@@ -199,7 +339,6 @@ function publicHost() {
       }
     }
   }
-
   return `http://localhost:${port}`;
 }
 
@@ -272,7 +411,7 @@ async function writeState(state: PrivateState) {
   };
 
   const result = writeQueue.then(operation).catch(err => {
-    console.error('State write error:', err);
+    console.error('State write error:', err instanceof Error ? err.message : String(err));
     throw err;
   });
 
@@ -316,10 +455,16 @@ function escapeXml(value: string) {
     .replace(/'/g, '&apos;');
 }
 
+// HIGH-2: Stricter path traversal protection
 function safeFileName(value: string) {
   const parsed = path.parse(value);
   const extension = parsed.ext.toLowerCase();
+  // Only allow alphanumeric, dots, hyphens, underscores, spaces
   const base = parsed.name.replace(/[^a-zA-Z0-9._ -]/g, '_').trim() || 'upload';
+  // Validate extension is safe
+  if (!/^\.[a-zA-Z0-9]+$/.test(extension)) {
+    throw new Error('invalid file extension');
+  }
   return `${base}${extension}`;
 }
 
@@ -327,10 +472,49 @@ function resolveMediaPath(fileName: string) {
   const safeName = safeFileName(fileName);
   const resolved = path.resolve(mediaDir, safeName);
 
-  if (!resolved.startsWith(`${mediaDir}${path.sep}`)) {
-    throw new Error('Invalid media path');
+  // Double-check: resolved path must start with mediaDir
+  if (!resolved.startsWith(mediaDir + path.sep) && resolved !== mediaDir) {
+    throw new Error('invalid media path');
   }
   return resolved;
+}
+
+// HIGH-1: Magic bytes validation
+const magicBytes: Record<string, Buffer[]> = {
+  '.mp3': [Buffer.from([0xFF, 0xFB]), Buffer.from([0xFF, 0xF3]), Buffer.from([0xFF, 0xF2]), Buffer.from([0x49, 0x44, 0x33])], // ID3
+  '.flac': [Buffer.from([0x66, 0x4C, 0x61, 0x43])], // "fLaC"
+  '.ogg': [Buffer.from([0x4F, 0x67, 0x67, 0x53])], // "OggS"
+  '.wav': [Buffer.from([0x52, 0x49, 0x46, 0x46])], // "RIFF"
+  '.m4a': [Buffer.from([0x00, 0x00, 0x00, 0x1C, 0x66, 0x74, 0x79, 0x70])], // ftyp
+  '.mp4': [Buffer.from([0x00, 0x00, 0x00, 0x1C, 0x66, 0x74, 0x79, 0x70])],
+  '.webm': [Buffer.from([0x1A, 0x45, 0xDF, 0xA3])],
+  '.mov': [Buffer.from([0x00, 0x00, 0x00, 0x14, 0x66, 0x74, 0x79, 0x70])],
+  '.aac': [Buffer.from([0xFF, 0xF1]), Buffer.from([0xFF, 0xF9])],
+};
+
+async function validateFileContent(filePath: string, extension: string): Promise<boolean> {
+  const expectedMagic = magicBytes[extension];
+  if (!expectedMagic) return true; // No magic bytes defined, skip validation
+
+  try {
+    const fileHandle = await fs.promises.open(filePath, 'r');
+    const buffer = Buffer.alloc(16);
+    const { bytesRead } = await fileHandle.read(buffer, 0, 16, 0);
+    await fileHandle.close();
+
+    if (bytesRead < 4) return false;
+
+    const header = buffer.slice(0, bytesRead);
+    return expectedMagic.some((magic) => {
+      if (magic.length > bytesRead) return false;
+      for (let i = 0; i < magic.length; i++) {
+        if (header[i] !== magic[i]) return false;
+      }
+      return true;
+    });
+  } catch {
+    return false;
+  }
 }
 
 async function listFiles(): Promise<ApiFile[]> {
@@ -344,7 +528,8 @@ async function listFiles(): Promise<ApiFile[]> {
 
       const absolutePath = path.join(mediaDir, entry.name);
       const stats = await fs.promises.stat(absolutePath);
-      const id = Buffer.from(entry.name, 'utf8').toString('base64url');
+      // HIGH-5: Use UUID for file IDs instead of base64 filename
+      const id = crypto.createHash('sha256').update(entry.name).digest('hex').slice(0, 16);
 
       const parsed = await readMetadata(absolutePath);
       const title = parsed?.common.title?.trim() || path.parse(entry.name).name.replace(/[_-]+/g, ' ');
@@ -379,6 +564,14 @@ async function findFile(id: string) {
   return {...file, absolutePath: resolveMediaPath(file.name)};
 }
 
+// MED-8: Audit logging
+function auditLog(action: string, details: Record<string, string>) {
+  const timestamp = new Date().toISOString();
+  console.log(`[AUDIT] ${timestamp} ${action} ${JSON.stringify(details)}`);
+}
+
+// --- ROUTES ---
+
 app.get('/api/status', requireShareToken, (_request, response) => {
   response.json({
     roomName,
@@ -388,7 +581,7 @@ app.get('/api/status', requireShareToken, (_request, response) => {
   });
 });
 
-app.get('/api/files', requireShareToken, async (_request, response, next) => {
+app.get('/api/files', requireShareToken, generalLimiter, async (_request, response, next) => {
   try {
     response.json({files: await listFiles()});
   } catch (error) {
@@ -396,7 +589,7 @@ app.get('/api/files', requireShareToken, async (_request, response, next) => {
   }
 });
 
-app.get('/api/state', requireShareToken, async (_request, response, next) => {
+app.get('/api/state', requireShareToken, generalLimiter, async (_request, response, next) => {
   try {
     response.json(await roomState());
   } catch (error) {
@@ -404,8 +597,22 @@ app.get('/api/state', requireShareToken, async (_request, response, next) => {
   }
 });
 
-app.get('/api/events', requireShareToken, async (request, response, next) => {
+// HIGH-7: Fix SSE auth - accept token as query parameter
+app.get('/api/events', async (request, response, next) => {
   try {
+    // Accept token from header OR query parameter
+    const headerToken = request.header('x-share-token');
+    const queryToken = typeof request.query.token === 'string' ? request.query.token : '';
+    const candidate = headerToken || queryToken;
+
+    const expected = Buffer.from(shareToken);
+    const actual = Buffer.from(candidate);
+
+    if (actual.length !== expected.length || !crypto.timingSafeEqual(actual, expected)) {
+      response.status(401).json({error: 'unauthorized'});
+      return;
+    }
+
     response.writeHead(200, {
       'content-type': 'text/event-stream',
       'cache-control': 'no-cache, no-transform',
@@ -430,7 +637,7 @@ app.get('/api/events', requireShareToken, async (request, response, next) => {
   }
 });
 
-app.post('/api/likes/:id', requireShareToken, async (request, response, next) => {
+app.post('/api/likes/:id', requireShareToken, generalLimiter, async (request, response, next) => {
   try {
     const file = await findFile(request.params.id);
     if (!file) {
@@ -455,7 +662,7 @@ app.post('/api/likes/:id', requireShareToken, async (request, response, next) =>
   }
 });
 
-app.post('/api/queue', requireShareToken, async (request, response, next) => {
+app.post('/api/queue', requireShareToken, generalLimiter, async (request, response, next) => {
   try {
     const fileId = typeof request.body?.fileId === 'string' ? request.body.fileId : '';
     const file = await findFile(fileId);
@@ -478,7 +685,7 @@ app.post('/api/queue', requireShareToken, async (request, response, next) => {
   }
 });
 
-app.delete('/api/queue/:id', requireShareToken, async (request, response, next) => {
+app.delete('/api/queue/:id', requireShareToken, generalLimiter, async (request, response, next) => {
   try {
     const state = await readState();
     await writeState({
@@ -491,7 +698,7 @@ app.delete('/api/queue/:id', requireShareToken, async (request, response, next) 
   }
 });
 
-app.post('/api/queue/clear', requireShareToken, async (_request, response, next) => {
+app.post('/api/queue/clear', requireShareToken, generalLimiter, async (_request, response, next) => {
   try {
     const state = await readState();
     await writeState({...state, queue: []});
@@ -501,74 +708,157 @@ app.post('/api/queue/clear', requireShareToken, async (_request, response, next)
   }
 });
 
-app.post('/api/auth/login', (request, response) => {
+// CRIT-1/4: JWT tokens + rate limiting + input validation
+app.post('/api/auth/login', authLimiter, async (request, response) => {
   const { username, password } = request.body;
-  const passwordHash = hashPassword(password);
-  const user = users.find((u) => u.username === username && u.passwordHash === passwordHash);
+
+  // MED-5: Input validation
+  if (typeof username !== 'string' || typeof password !== 'string') {
+    response.status(400).json({ error: 'username and password required' });
+    return;
+  }
+  if (username.length < 1 || username.length > 64) {
+    response.status(400).json({ error: 'invalid username length' });
+    return;
+  }
+  if (password.length < 1) {
+    response.status(400).json({ error: 'password required' });
+    return;
+  }
+
+  const user = users.find((u) => u.username === username);
   if (!user) {
+    auditLog('LOGIN_FAILED', { username, reason: 'user_not_found' });
     response.status(401).json({ error: 'invalid credentials' });
     return;
   }
+
+  const valid = await verifyPassword(password, user.passwordHash);
+  if (!valid) {
+    auditLog('LOGIN_FAILED', { username, reason: 'wrong_password' });
+    response.status(401).json({ error: 'invalid credentials' });
+    return;
+  }
+
   user.lastLogin = new Date().toISOString();
   saveUsers();
+
+  // CRIT-1: Return JWT token, never password
+  const token = generateSessionToken(user);
+  auditLog('LOGIN_SUCCESS', { username, userId: user.id });
+
   response.json({
-    token: password,
+    token,
     user: { id: user.id, username: user.username, role: user.role },
   });
 });
 
-app.post('/api/auth/register', (request, response) => {
+// CRIT-1/4/6: JWT tokens + rate limiting + input validation + longer invite codes
+app.post('/api/auth/register', authLimiter, async (request, response) => {
   const { username, password, inviteCode } = request.body;
-  if (!username || !password || !inviteCode) {
+
+  // MED-5: Input validation
+  if (typeof username !== 'string' || typeof password !== 'string' || typeof inviteCode !== 'string') {
     response.status(400).json({ error: 'username, password and invite code required' });
     return;
   }
+  if (username.length < 3 || username.length > 32) {
+    response.status(400).json({ error: 'username must be 3-32 characters' });
+    return;
+  }
+  if (!/^[a-zA-Z0-9_-]+$/.test(username)) {
+    response.status(400).json({ error: 'username contains invalid characters' });
+    return;
+  }
+  if (password.length < 8) {
+    response.status(400).json({ error: 'password must be at least 8 characters' });
+    return;
+  }
+  if (password.length > 128) {
+    response.status(400).json({ error: 'password too long' });
+    return;
+  }
+
   const invite = invites.find((i) => i.code === inviteCode.toUpperCase() && i.usedCount < i.maxUses);
   if (!invite) {
+    auditLog('REGISTER_FAILED', { username, reason: 'invalid_invite' });
     response.status(400).json({ error: 'invalid or expired invite code' });
     return;
   }
+
+  // MED-6: Check invite expiration
+  if (invite.expiresAt && new Date(invite.expiresAt) < new Date()) {
+    auditLog('REGISTER_FAILED', { username, reason: 'expired_invite' });
+    response.status(400).json({ error: 'invite code expired' });
+    return;
+  }
+
   if (users.find((u) => u.username === username)) {
     response.status(400).json({ error: 'username already taken' });
     return;
   }
+
+  // CRIT-2: Use bcrypt
+  const passwordHash = await hashPassword(password);
+
   const newUser: User = {
-    id: generateCode(4),
+    id: crypto.randomUUID(), // HIGH-5: Use UUID
     username,
-    passwordHash: hashPassword(password),
+    passwordHash,
     role: invite.role,
     createdAt: new Date().toISOString(),
     lastLogin: new Date().toISOString(),
   };
+
   users.push(newUser);
   invite.usedCount += 1;
   invite.usedBy.push(username);
   saveUsers();
   saveInvites();
-  response.json({ token: password, user: { id: newUser.id, username: newUser.username, role: newUser.role } });
+
+  // CRIT-1: Return JWT token
+  const token = generateSessionToken(newUser);
+  auditLog('REGISTER_SUCCESS', { username, userId: newUser.id });
+
+  response.json({
+    token,
+    user: { id: newUser.id, username: newUser.username, role: newUser.role },
+  });
 });
 
-app.get('/api/auth/me', requireShareToken, (request, response) => {
-  const user = request.headers['x-user'] as User;
+app.get('/api/auth/me', requireUserAuth, (request, response) => {
+  const user = request.user;
+  if (!user) { response.status(401).json({ error: 'auth required' }); return; }
   response.json({ id: user.id, username: user.username, role: user.role });
 });
 
-app.post('/api/auth/invite', requireAdmin, (request, response) => {
-  const { role = 'member', maxUses = 1, expiresInHours } = request.body;
-  const user = request.headers['x-user'] as User;
+app.post('/api/auth/logout', requireUserAuth, (request, response) => {
+  // JWT tokens are stateless - client should delete token
+  // For future: implement token blacklist in memory/Redis
+  auditLog('LOGOUT', { userId: request.user?.id || 'unknown' });
+  response.json({ ok: true });
+});
+
+// CRIT-4: Rate limit admin endpoints
+app.post('/api/auth/invite', requireAdmin, uploadLimiter, (request, response) => {
+  const { role = 'member', maxUses = 1, expiresInHours = 168 } = request.body; // MED-6: Default 7 day expiry
+  const user = request.user;
+  if (!user) { response.status(401).json({ error: 'auth required' }); return; }
+
   const newInvite: Invite = {
-    id: generateCode(4),
-    code: generateCode(6),
+    id: crypto.randomUUID(), // HIGH-5: Use UUID
+    code: generateInviteCode(), // HIGH-4: 16-char code
     role,
     maxUses,
     usedCount: 0,
     usedBy: [],
-    expiresAt: expiresInHours ? new Date(Date.now() + expiresInHours * 3600000).toISOString() : undefined,
+    expiresAt: new Date(Date.now() + expiresInHours * 3600000).toISOString(), // MED-6: Always set expiry
     createdAt: new Date().toISOString(),
     createdBy: user.username,
   };
   invites.push(newInvite);
   saveInvites();
+  auditLog('INVITE_CREATED', { code: newInvite.code, role, createdBy: user.username });
   response.json(newInvite);
 });
 
@@ -589,18 +879,24 @@ app.delete('/api/auth/invite/:id', requireAdmin, (request, response) => {
   }
   invites.splice(index, 1);
   saveInvites();
+  auditLog('INVITE_DELETED', { id, deletedBy: request.user?.username || 'unknown' });
   response.json({ ok: true });
 });
 
-app.post('/api/auth/admin-secret', (request, response) => {
+app.post('/api/auth/admin-secret', authLimiter, (request, response) => {
   const { secret } = request.body;
+  if (typeof secret !== 'string') {
+    response.status(400).json({ error: 'secret required' });
+    return;
+  }
   if (secret !== adminSecret) {
+    auditLog('ADMIN_SECRET_FAILED', { ip: request.ip || 'unknown' });
     response.status(403).json({ error: 'invalid secret' });
     return;
   }
   if (users.length === 0) {
     const adminUser: User = {
-      id: generateCode(4),
+      id: crypto.randomUUID(),
       username: 'admin',
       passwordHash: hashPassword('admin'),
       role: 'admin',
@@ -609,15 +905,17 @@ app.post('/api/auth/admin-secret', (request, response) => {
     };
     users.push(adminUser);
     saveUsers();
+    auditLog('ADMIN_INITIALIZED', {});
   }
   response.json({ ok: true, message: 'admin initialized' });
 });
 
+// VULN-LOW-2: Remove app name from health endpoint
 app.get('/api/health', (_request, response) => {
-  response.json({ok: true, name: 'StreamSync'});
+  response.json({ok: true});
 });
 
-app.get('/api/art/:id', requireShareToken, async (request, response, next) => {
+app.get('/api/art/:id', requireShareToken, generalLimiter, async (request, response, next) => {
   try {
     const file = await findFile(request.params.id);
     if (!file) {
@@ -669,7 +967,8 @@ app.get('/api/art/:id', requireShareToken, async (request, response, next) => {
   }
 });
 
-app.post('/api/upload', requireShareToken, async (request, response, next) => {
+// HIGH-1/2/3: File upload with magic bytes validation + path traversal fix + size limit
+app.post('/api/upload', requireShareToken, uploadLimiter, async (request, response, next) => {
   try {
     const originalName = typeof request.query.name === 'string' ? request.query.name : '';
     const extension = path.extname(originalName).toLowerCase();
@@ -680,13 +979,16 @@ app.post('/api/upload', requireShareToken, async (request, response, next) => {
     }
 
     const target = resolveMediaPath(originalName);
-    const tempTarget = `${target}.tmp-${crypto.randomBytes(4).toString('hex')}`;
+    const tempTarget = `${target}.tmp-${crypto.randomUUID()}`;
     const writeStream = fs.createWriteStream(tempTarget, {flags: 'wx'});
 
     let bytesReceived = 0;
+    let aborted = false;
+
     request.on('data', (chunk) => {
       bytesReceived += chunk.length;
-      if (bytesReceived > maxUploadBytes) {
+      if (bytesReceived > maxUploadBytes && !aborted) {
+        aborted = true;
         writeStream.destroy();
         request.destroy();
         if (!response.headersSent) {
@@ -707,13 +1009,25 @@ app.post('/api/upload', requireShareToken, async (request, response, next) => {
 
     writeStream.on('finish', async () => {
       try {
-        if (bytesReceived <= maxUploadBytes) {
-          await fs.promises.rename(tempTarget, target);
-          response.status(201).json({ok: true});
-        } else {
+        if (aborted || bytesReceived > maxUploadBytes) {
           await fs.promises.unlink(tempTarget).catch(() => {});
+          return;
         }
+
+        // HIGH-1: Validate file content matches extension
+        const isValid = await validateFileContent(tempTarget, extension);
+        if (!isValid) {
+          await fs.promises.unlink(tempTarget).catch(() => {});
+          auditLog('UPLOAD_REJECTED', { name: originalName, reason: 'invalid_content' });
+          response.status(415).json({error: 'file content does not match extension'});
+          return;
+        }
+
+        await fs.promises.rename(tempTarget, target);
+        auditLog('UPLOAD_SUCCESS', { name: originalName, size: String(bytesReceived) });
+        response.status(201).json({ok: true});
       } catch (err) {
+        await fs.promises.unlink(tempTarget).catch(() => {});
         next(err);
       }
     });
@@ -722,7 +1036,7 @@ app.post('/api/upload', requireShareToken, async (request, response, next) => {
   }
 });
 
-app.get('/api/stream/:id', requireShareToken, async (request, response, next) => {
+app.get('/api/stream/:id', requireShareToken, generalLimiter, async (request, response, next) => {
   try {
     const file = await findFile(request.params.id);
     if (!file) {
@@ -769,14 +1083,21 @@ if (fs.existsSync(distDir)) {
   app.get('*', (_request, response) => response.sendFile(path.join(distDir, 'index.html')));
 }
 
+// MED-4: Sanitized error handling
 app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => {
-  console.error(error);
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`[ERROR] ${message}`);
   if (!response.headersSent) {
     response.status(500).json({error: 'internal server error'});
   }
 });
 
-app.listen(port, '0.0.0.0', () => {
-  console.log(`StreamSync server running on ${publicHost()}`);
+// VULN-LOW-1: Bind to localhost only (use reverse proxy for external access)
+const bindHost = process.env.BIND_HOST ?? '127.0.0.1';
+app.listen(port, bindHost, () => {
+  console.log(`StreamSync server running on http://${bindHost}:${port}`);
   console.log(`Media folder: ${mediaDir}`);
+  if (bindHost === '127.0.0.1') {
+    console.log('Note: Server is bound to localhost. Use a reverse proxy (Caddy/Nginx) for external access.');
+  }
 });

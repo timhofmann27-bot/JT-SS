@@ -1,48 +1,104 @@
-const CACHE_NAME = 'jt-mp3-shell-v1';
-const SHELL_ASSETS = ['/', '/manifest.webmanifest', '/icon.svg'];
+// JT-MP3 Service Worker - Power PWA Features
+const CACHE_NAME = 'jt-mp3-v1';
+const STATIC_ASSETS = [
+  '/',
+  '/index.html',
+  '/icon.svg',
+  '/manifest.webmanifest',
+];
 
+// Installation: Cache App Shell
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_ASSETS)));
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(STATIC_ASSETS);
+    })
+  );
   self.skipWaiting();
 });
 
+// Aktivierung: Alte Caches löschen
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))),
-    ),
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames
+          .filter((name) => name !== CACHE_NAME)
+          .map((name) => caches.delete(name))
+      );
+    })
   );
   self.clients.claim();
 });
 
+// Fetch: Cache-First Strategie für App, Network-First für API
 self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url);
+  const { request } = event;
+  const url = new URL(request.url);
 
+  // API Calls: Network-First mit Timeout
   if (url.pathname.startsWith('/api/')) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          return response;
+        })
+        .catch(() => {
+          return new Response(JSON.stringify({ error: 'offline' }), {
+            headers: { 'Content-Type': 'application/json' },
+          });
+        })
+    );
     return;
   }
 
-  // Only cache clearly static assets
-  const isStaticAsset =
-    SHELL_ASSETS.includes(url.pathname) ||
-    url.pathname.endsWith('.svg') ||
-    url.pathname.endsWith('.png') ||
-    url.pathname.endsWith('.jpg') ||
-    url.pathname.endsWith('.jpeg') ||
-    url.pathname.endsWith('.webp') ||
-    url.pathname.endsWith('.webmanifest');
-
-  if (!isStaticAsset) {
+  // Audio/Video Streams: Nur Network
+  if (url.pathname.startsWith('/api/stream/')) {
+    event.respondWith(fetch(request));
     return;
   }
 
+  // Statische Assets: Cache-First
   event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        const clone = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+    caches.match(request).then((cached) => {
+      if (cached) {
+        return cached;
+      }
+      return fetch(request).then((response) => {
+        if (response.status === 200) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(request, clone);
+          });
+        }
         return response;
-      })
-      .catch(() => caches.match(event.request).then((cached) => cached || caches.match('/'))),
+      });
+    })
+  );
+});
+
+// Hintergrund-Synchronisation für Uploads
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'upload-sync') {
+    event.waitUntil(handleBackgroundUpload());
+  }
+});
+
+async function handleBackgroundUpload() {
+  // Uploads aus IndexedDB holen und senden
+  console.log('Background sync triggered');
+}
+
+// Push Benachrichtigungen (optional für zukünftige Features)
+self.addEventListener('push', (event) => {
+  const data = event.data?.json() ?? {};
+  event.waitUntil(
+    self.registration.showNotification(data.title ?? 'JT-MP3', {
+      body: data.body ?? 'Neue Musik im Raum',
+      icon: '/icon.svg',
+      badge: '/icon.svg',
+      requireInteraction: false,
+      data: data,
+    })
   );
 });

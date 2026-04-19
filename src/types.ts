@@ -130,6 +130,7 @@ export interface AuthUser {
 export interface LoginResponse {
   token: string;
   user: AuthUser;
+  error?: string;
 }
 
 export interface InviteAPI {
@@ -144,4 +145,11 @@ export interface InviteAPI {
   createdBy: string;
 }
 
-export type View = 'library' | 'queue' | 'albums' | 'artists' | 'playlists' | 'discover' | 'charts' | 'settings' | 'upload' | 'room' | 'share' | 'public' | 'login' | 'register' | 'admin' | 'team';
+export type NavTab = 'home' | 'search' | 'library' | 'profile';
+
+export type View =
+  | 'home' | 'search' | 'library' | 'profile'
+  | 'queue' | 'albums' | 'artists' | 'playlists' | 'discover' | 'charts'
+  | 'settings' | 'upload' | 'room' | 'share' | 'public'
+  | 'login' | 'register' | 'admin' | 'team'
+  | 'album-detail' | 'artist-detail' | 'playlist-detail' | 'liked';

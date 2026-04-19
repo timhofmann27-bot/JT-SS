@@ -1,37 +1,20 @@
-import pino from 'pino';
-import pinoHttp from 'pino-http';
+import type { Request, Response, NextFunction } from 'express';
 
-// Create logger instance
-const logger = pino({
-  level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
-  transport: {
-    target: 'pino-pretty',
-    options: {
-      colorize: true,
-    },
-  },
-});
+const level = process.env.NODE_ENV === 'production' ? 'info' : 'debug';
 
-// Create HTTP logger middleware
-const httpLogger = pinoHttp({
-  logger,
-  // Don't log health checks to reduce noise
-  ignore: (req, res) => {
-    return req.url === '/api/health' && res.statusCode === 200;
-  },
-  // Custom serializers
-  serializers: {
-    req: (req) => ({
-      method: req.method,
-      url: req.url,
-      hostname: req.hostname,
-      remoteAddress: req.ip,
-      userAgent: req.headers['user-agent'],
-    }),
-    res: (res) => ({
-      statusCode: res.statusCode,
-    }),
-  },
-});
+export const logger = {
+  level,
+  info: (...args: unknown[]) => console.log('[info]', ...args),
+  debug: (...args: unknown[]) => level === 'debug' && console.debug('[debug]', ...args),
+  warn: (...args: unknown[]) => console.warn('[warn]', ...args),
+  error: (...args: unknown[]) => console.error('[error]', ...args),
+};
 
-export { logger, httpLogger };
+export function httpLogger(req: Request, res: Response, next: NextFunction) {
+  if (req.url === '/api/health') { next(); return; }
+  const start = Date.now();
+  res.on('finish', () => {
+    logger.info(req.method, req.url, res.statusCode, `${Date.now() - start}ms`);
+  });
+  next();
+}

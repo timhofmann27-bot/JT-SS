@@ -93,8 +93,13 @@ describe('StreamSync Server API', () => {
       ];
 
       const filtered = [validItem, ...invalidItems].filter(
-        (item): item is typeof validItem =>
-          Boolean(item) && typeof item.id === 'string' && typeof item.fileId === 'string' && typeof item.addedAt === 'string'
+        (item): item is typeof validItem => {
+          if (!item) return false;
+          const candidate = item as Partial<typeof validItem>;
+          return typeof candidate.id === 'string'
+            && typeof candidate.fileId === 'string'
+            && typeof candidate.addedAt === 'string';
+        }
       );
 
       expect(filtered).toHaveLength(1);

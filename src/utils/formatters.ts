@@ -1,9 +1,6 @@
-export function formatTime(value: number): string {
-  if (!Number.isFinite(value)) return '0:00';
-  const minutes = Math.floor(value / 60);
-  const seconds = Math.floor(value % 60).toString().padStart(2, '0');
-  return `${minutes}:${seconds}`;
-}
+import type { ApiFile } from '../types';
+
+export { formatTime } from '../lib/format';
 
 export function trackMeta(file: ApiFile): string {
   const artist = file.artist?.trim();
@@ -16,9 +13,8 @@ export function trackMeta(file: ApiFile): string {
   return `${type} - ${duration}${file.sizeLabel}`;
 }
 
-// Mock haptic function for testing
 export function haptic(): void {
-  if ('vibrate' in navigator) {
-    navigator.vibrate(10);
+  if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+    try { navigator.vibrate(10); } catch { /* noop */ }
   }
 }

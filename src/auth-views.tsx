@@ -16,7 +16,6 @@ import {
 } from 'lucide-react';
 import type { ApiFile, Album, Artist, Playlist, ChartItem, UserSettings, UserProfile, SharedRoom, AuthUser, InviteAPI } from './types';
 import {
-  Music,
   TrendingUp,
   BarChart3,
   Clock,
@@ -539,12 +538,15 @@ export function ShareView({ userProfile, shareCode, files, onGenerateCode, onTog
               <div className="mt-4">
                 <h3 className="font-bold text-sm text-muted mb-2">Deine Top Tracks</h3>
                 <div className="space-y-2">
-                  {topTracks.slice(0, 5).map((file: ApiFile | boolean) => file && (
-                    <div key={file.id} className="flex items-center gap-2">
-                      <img src={coverUrl(file)} alt="" className="h-8 w-8 rounded" />
-                      <p className="truncate text-sm">{file.title}</p>
-                    </div>
-                  ))}
+                  {topTracks.slice(0, 5).map((file) => {
+                    if (!file || typeof file === 'boolean') return null;
+                    return (
+                      <div key={file.id} className="flex items-center gap-2">
+                        <img src={coverUrl(file)} alt="" className="h-8 w-8 rounded" />
+                        <p className="truncate text-sm">{file.title}</p>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -697,7 +699,7 @@ export function RegisterView({ onRegister, error, inviteCode = '' }: {
   inviteCode?: string;
 }) {
   const [username, setUsername] = React.useState('');
-  const [password, setPassword] = React.useState(password);
+  const [password, setPassword] = React.useState('');
   const [code, setCode] = React.useState(inviteCode);
 
   return (

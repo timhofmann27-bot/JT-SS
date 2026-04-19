@@ -1,131 +1,73 @@
-import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertCircle,
-  CheckCircle2,
-  Disc3,
-  FileAudio,
-  FileVideo,
   Heart,
-  Headphones,
-  Library,
   ListMusic,
-  Lock,
-  LogOut,
-  Pause,
-  Play,
   Plus,
-  RefreshCcw,
   Repeat,
   Repeat1,
   Search,
-  Settings,
-  Shield,
   Shuffle,
   SkipBack,
   SkipForward,
   Upload,
-  Trash2,
-  Users,
-  Wifi,
-  X,
   Volume2,
-  Clock,
-  TrendingUp,
-  Music,
-  User,
-  Disc,
-  Star,
-  Flame,
-  MonitorSpeaker,
-  Maximize2,
-  HeartHandshake,
-  Mic2,
-  ListPlus,
-  GripVertical,
-  MoreHorizontal,
-  ChevronRight,
-  ChevronLeft,
+  VolumeX,
+  Pause,
+  Play,
+  Disc3,
   Home,
-  Compass,
-  BarChart3,
-  Timer,
-  Sliders,
-  Share2,
-  Link2,
-  UserPlus,
-  Globe,
-  Copy,
-  QrCode,
-  ExternalLink,
-  Rss,
+  Library,
+  PlusSquare,
+  ChevronLeft,
+  ChevronRight,
+  X,
+  MoreHorizontal,
+  Clock,
+  FolderMusic,
+  User,
 } from 'lucide-react';
-import {AnimatePresence, motion} from 'motion/react';
-import type {ApiFile, ApiStatus, QueueItem, RoomState, UploadState, View, Album, Artist, Playlist, ChartItem, UserSettings, UserProfile, SharedRoom, AuthUser, LoginResponse, InviteAPI} from './types';
-import {LoginView, RegisterView, AlbumsView, ArtistsView, PlaylistsView, DiscoverView, ChartsView, SettingsView, ShareView, PublicRoomsView, AdminView, TeamView} from './views';
+import { AnimatePresence, motion } from 'motion/react';
+import type { ApiFile, ApiStatus, QueueItem, RoomState, UploadState, View, Album, Artist, Playlist, NavTab } from './types';
+import { LoginView, RegisterView } from './auth-views';
+import { Sidebar } from './components/layout';
+import { LikeButton, Section, EmptyState, TrackRow, MediaCard, useContextMenu, ContextMenu, type ContextMenuItem } from './components/ui';
+import { FullscreenPlayer, QueueSheet } from './components/player';
+import { usePWA } from './hooks/usePWA';
+import { useWakeLock } from './hooks/useWakeLock';
+import { useHashRouter } from './hooks/useHashRouter';
+import { coverUrl } from './lib/api';
+import { formatTime, trackSubtitle, trackArtist, hueFromString } from './lib/format';
+import {
+  HomeView,
+  SearchView,
+  LibraryView,
+  LikedSongsView,
+  AlbumDetailView,
+  ArtistDetailView,
+  PlaylistDetailView,
+} from './views';
 
 const TOKEN_STORAGE_KEY = 'jt-mp3.sessionToken';
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
 
-function apiUrl(path: string) {
-  return `${API_BASE}${path}`;
+function apiUrl(path: string) { return `${API_BASE}${path}`; }
+
+function getCoverUrl(file: ApiFile | null, token?: string) {
+  if (!file) return '/icon.svg';
+  if (file.hasArtwork) return apiUrl(`/api/cover/${file.id}${token ? `?token=${token}` : ''}`);
+  return '/icon.svg';
 }
 
-function formatTime(value: number) {
-  if (!Number.isFinite(value)) return '0:00';
-  const minutes = Math.floor(value / 60);
-  const seconds = Math.floor(value % 60).toString().padStart(2, '0');
-  return `${minutes}:${seconds}`;
-}
-
-function haptic() {
-  if ('vibrate' in navigator) {
-    navigator.vibrate(10);
-  }
-}
-
-function BackgroundGlow({ coverUrl }: { coverUrl: string }) {
-  return (
-    <div className="fixed inset-0 -z-10 overflow-hidden pointer-events-none">
-      <motion.div
-        key={coverUrl}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 0.4 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 1.5 }}
-        className="absolute inset-0"
-        style={{
-          background: `radial-gradient(circle at 20% 30%, var(--color-mint), transparent 40%),
-                       radial-gradient(circle at 80% 70%, var(--color-coral), transparent 40%),
-                       var(--color-night)`,
-        }}
-      />
-      {coverUrl !== '/icon.svg' && (
-        <motion.div
-          key={`glow-${coverUrl}`}
-          initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 0.3, scale: 1.2 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 2 }}
-          className="absolute inset-0 blur-[100px] saturate-150"
-          style={{
-            backgroundImage: `url(${coverUrl})`,
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            filter: 'blur(100px) brightness(0.8)',
-          }}
-        />
-      )}
-    </div>
-  );
+function haptic(pattern: number | number[] = 10) {
+  if ('vibrate' in navigator) { try { navigator.vibrate(pattern); } catch { /* silent */ } }
 }
 
 export default function App() {
-  const [view, setView] = useState<View>('library');
+  const { view, albumId, artistId, playlistId, navigate } = useHashRouter();
   const [token, setToken] = useState(() => sessionStorage.getItem(TOKEN_STORAGE_KEY) ?? '');
-  const [loginToken, setLoginToken] = useState('');
   const [status, setStatus] = useState<ApiStatus | null>(null);
   const [files, setFiles] = useState<ApiFile[]>([]);
-  const [roomState, setRoomState] = useState<RoomState>({likedIds: [], queue: [], updatedAt: ''});
+  const [roomState, setRoomState] = useState<RoomState>({ likedIds: [], queue: [], playlists: [], updatedAt: '' });
   const [currentFile, setCurrentFile] = useState<ApiFile | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -133,48 +75,56 @@ export default function App() {
   const [query, setQuery] = useState('');
   const [error, setError] = useState('');
   const [isPlayerOpen, setIsPlayerOpen] = useState(false);
-  const [upload, setUpload] = useState<UploadState>({active: false, progress: 0, message: ''});
+  const [upload, setUpload] = useState<UploadState>({ active: false, progress: 0, message: '' });
   const [shuffle, setShuffle] = useState(false);
   const [repeat, setRepeat] = useState<'off' | 'all' | 'one'>('off');
   const [volume, setVolume] = useState(1);
-  const [playlists, setPlaylists] = useState<Playlist[]>([]);
-  const [selectedAlbum, setSelectedAlbum] = useState<Album | null>(null);
-  const [selectedArtist, setSelectedArtist] = useState<Artist | null>(null);
-  const [selectedPlaylist, setSelectedPlaylist] = useState<Playlist | null>(null);
-  const [showCreatePlaylist, setShowCreatePlaylist] = useState(false);
-  const [newPlaylistName, setNewPlaylistName] = useState('');
-  const [sleepTimer, setSleepTimer] = useState(0);
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
-  const [shareCode, setShareCode] = useState(() => localStorage.getItem('shareCode') || '');
-  const [sharedRooms, setSharedRooms] = useState<SharedRoom[]>([]);
-  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
-  const [invites, setInvites] = useState<InviteAPI[]>([]);
-  const [teamUsers, setTeamUsers] = useState<{ id: string; username: string; role: string; createdAt: string; lastLogin: string }[]>([]);
-  const [registerCode, setRegisterCode] = useState(() => {
-    const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '');
-    return params.get('invite') || '';
-  });
-  const [settings, setSettings] = useState<UserSettings>({
-    audioQuality: 'normal',
-    sleepTimer: 0,
-    autoplay: true,
-    crossfade: 0,
-    normalize: false,
-  });
+  const [showQueue, setShowQueue] = useState(false);
+  const [uploadInputRef] = useState(() => React.createRef<HTMLInputElement>());
+  const [libraryFilter, setLibraryFilter] = useState<'playlists' | 'artists' | 'albums'>('playlists');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const mainScrollRef = useRef<HTMLDivElement>(null);
+
+  const selectedAlbum = useMemo(() => {
+    if (!albumId) return null;
+    return albums.find((a) => a.id === albumId) ?? null;
+  }, [albumId, albums]);
+
+  const selectedArtist = useMemo(() => {
+    if (!artistId) return null;
+    return artists.find((a) => a.id === artistId) ?? null;
+  }, [artistId, artists]);
+
+  const selectedPlaylist = useMemo(() => {
+    if (!playlistId) return null;
+    return roomState.playlists.find((p) => p.id === playlistId) ?? null;
+  }, [playlistId, roomState.playlists]);
+
+  const changeView = useCallback((nextView: View) => { haptic(); navigate(nextView); }, [navigate]);
+
+  const { isOffline } = usePWA();
+  const { isSupported: wakeLockSupported, isActive: wakeLockActive, request: requestWakeLock, release: releaseWakeLock } = useWakeLock();
+
+  const { open: openContextMenu, close: closeContextMenu, menu: ContextMenuComponent } = useContextMenu();
+
+  useEffect(() => {
+    if (isPlaying && wakeLockSupported) void requestWakeLock();
+    else if (!isPlaying && wakeLockActive) void releaseWakeLock();
+    return () => { if (wakeLockActive) void releaseWakeLock(); };
+  }, [isPlaying, wakeLockSupported, wakeLockActive, requestWakeLock, releaseWakeLock]);
 
   const isAuthenticated = token.length > 0;
-  const authHeaders = useMemo(() => ({'x-share-token': token}), [token]);
+  const authHeaders = useMemo(() => ({ 'x-share-token': token }), [token]);
   const progress = duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0;
   const likedIds = useMemo(() => new Set(roomState.likedIds), [roomState.likedIds]);
+  const likedFiles = useMemo(() => files.filter((f) => likedIds.has(f.id)), [files, likedIds]);
 
   const filteredFiles = useMemo(() => {
     const needle = query.trim().toLowerCase();
     if (!needle) return files;
     return files.filter((file) =>
       file.title.toLowerCase().includes(needle) ||
-      file.name.toLowerCase().includes(needle) ||
       file.artist?.toLowerCase().includes(needle) ||
       file.album?.toLowerCase().includes(needle)
     );
@@ -183,19 +133,10 @@ export default function App() {
   const albums = useMemo(() => {
     const albumMap = new Map<string, Album>();
     files.forEach((file) => {
-      const albumName = file.album || file.title.split('-')[0]?.trim() || 'Unknown';
+      const albumName = file.album || 'Unknown';
       const existing = albumMap.get(albumName);
-      if (existing) {
-        existing.tracks.push(file);
-      } else {
-        albumMap.set(albumName, {
-          id: albumName.toLowerCase().replace(/\s+/g, '-'),
-          name: albumName,
-          artist: file.artist,
-          tracks: [file],
-          trackCount: 1,
-        });
-      }
+      if (existing) existing.tracks.push(file);
+      else albumMap.set(albumName, { id: albumName.toLowerCase().replace(/\s+/g, '-'), name: albumName, artist: file.artist, tracks: [file], trackCount: 1 });
     });
     return Array.from(albumMap.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [files]);
@@ -205,34 +146,12 @@ export default function App() {
     files.forEach((file) => {
       const artistName = file.artist || 'Unknown';
       const existing = artistMap.get(artistName);
-      if (existing) {
-        existing.topTracks.push(file);
-        const albumName = file.album || file.title.split('-')[0]?.trim() || 'Unknown';
-        let album = existing.albums.find((a) => a.name === albumName);
-        if (!album) {
-          album = {
-            id: albumName.toLowerCase().replace(/\s+/g, '-'),
-            name: albumName,
-            artist: artistName,
-            tracks: [],
-            trackCount: 0,
-          };
-          existing.albums.push(album);
-        }
-        album.tracks.push(file);
-        album.trackCount = album.tracks.length;
-      } else {
-        const albumName = file.album || file.title.split('-')[0]?.trim() || 'Unknown';
+      if (existing) existing.topTracks.push(file);
+      else {
         artistMap.set(artistName, {
           id: artistName.toLowerCase().replace(/\s+/g, '-'),
           name: artistName,
-          albums: [{
-            id: albumName.toLowerCase().replace(/\s+/g, '-'),
-            name: albumName,
-            artist: artistName,
-            tracks: [file],
-            trackCount: 1,
-          }],
+          albums: [{ id: (file.album || 'Unknown').toLowerCase().replace(/\s+/g, '-'), name: file.album || 'Unknown', artist: artistName, tracks: [file], trackCount: 1 }],
           topTracks: [file],
         });
       }
@@ -240,338 +159,177 @@ export default function App() {
     return Array.from(artistMap.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [files]);
 
-  const charts = useMemo(() => {
-    return files.map((file, index) => ({
-      rank: index + 1,
-      file,
-      plays: Math.floor(Math.random() * 1000),
-      trend: Math.random() > 0.5 ? 'up' : Math.random() > 0.3 ? 'stable' : 'down' as const,
-    })).sort((a, b) => b.plays - a.plays);
+  const sidebarPlaylists = useMemo(() => {
+    return roomState.playlists.map((p) => ({ id: p.id, name: p.name }));
+  }, [roomState.playlists]);
+
+  const recentlyPlayed = useMemo(() => {
+    return files.slice(0, 4);
   }, [files]);
 
-  async function loadStatus(activeToken = token) {
+  async function loadStatus() {
     try {
-      const response = await fetch(apiUrl('/api/status'), {
-        headers: activeToken ? {'x-share-token': activeToken} : undefined,
-      });
-      if (!response.ok) throw new Error('Status konnte nicht geladen werden.');
+      const response = await fetch(apiUrl('/api/status'), { headers: { 'x-share-token': token } });
+      if (!response.ok) throw new Error();
       setStatus(await response.json());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Status-Fehler');
-      throw e;
-    }
+    } catch { /* silent */ }
   }
 
-  async function loadFiles(activeToken = token) {
+  async function loadFiles() {
     try {
-      const response = await fetch(apiUrl('/api/files'), {headers: {'x-share-token': activeToken}});
-      if (!response.ok) throw new Error('Bibliothek konnte nicht geladen werden.');
+      const response = await fetch(apiUrl('/api/files'), { headers: { 'x-share-token': token } });
+      if (!response.ok) throw new Error();
       const data = await response.json();
-setFiles(data.files);
-        if (data.files.length > 0 && !currentFile) {
-          setCurrentFile(data.files[0]);
-        }
-        buildAlbumsArtists(data.files);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Dateiladen-Fehler');
-      throw e;
-    }
+      setFiles(data.files);
+      if (data.files.length > 0 && !currentFile) setCurrentFile(data.files[0]);
+    } catch { /* silent */ }
   }
 
-  async function loadRoomState(activeToken = token) {
+  async function loadRoomState() {
     try {
-      const response = await fetch(apiUrl('/api/state'), {headers: {'x-share-token': activeToken}});
-      if (!response.ok) throw new Error('Raumzustand konnte nicht geladen werden.');
+      const response = await fetch(apiUrl('/api/state'), { headers: { 'x-share-token': token } });
+      if (!response.ok) throw new Error();
       setRoomState(await response.json());
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'State-Fehler');
-      throw e;
-    }
+    } catch { /* silent */ }
   }
 
   useEffect(() => {
     if (!isAuthenticated) return;
-
-    Promise.all([loadStatus(), loadFiles(), loadRoomState()]).catch((reason) => {
-      setError(reason instanceof Error ? reason.message : 'Verbindung zum lokalen Server fehlgeschlagen.');
-      setToken('');
-      sessionStorage.removeItem(TOKEN_STORAGE_KEY);
-    });
+    Promise.all([loadStatus(), loadFiles(), loadRoomState()]).catch(() => {});
   }, [isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
-
-    const events = new EventSource(apiUrl(`/api/events`));
+    const events = new EventSource(apiUrl(`/api/events?token=${encodeURIComponent(token)}`));
     events.addEventListener('state', (event) => {
-      try {
-        setRoomState(JSON.parse((event as MessageEvent).data));
-      } catch (e) {
-        console.error('SSE Parse Error:', e);
-      }
+      try { setRoomState(JSON.parse((event as MessageEvent).data)); } catch { /* silent */ }
     });
-    events.onerror = () => {
-      events.close();
-      setError('SSE Verbindung unterbrochen.');
-    };
-
+    events.onerror = () => events.close();
     return () => events.close();
   }, [isAuthenticated, token]);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !currentFile) return;
-
     audio.src = apiUrl(`/api/stream/${currentFile.id}`);
     audio.load();
-    setCurrentTime(0);
-    setDuration(0);
-    if (isPlaying) {
-      void audio.play().catch(() => setIsPlaying(false));
-    }
+    setCurrentTime(0); setDuration(0);
+    if (isPlaying) void audio.play().catch(() => setIsPlaying(false));
   }, [currentFile, token]);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-
-    if (isPlaying) {
-      void audio.play().catch(() => setIsPlaying(false));
-    } else {
-      audio.pause();
-    }
+    if (isPlaying) void audio.play().catch(() => setIsPlaying(false));
+    else audio.pause();
   }, [isPlaying]);
 
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio) return;
-    audio.volume = volume;
+    if (audio) audio.volume = volume;
   }, [volume]);
-
-  useEffect(() => {
-    if (!('mediaSession' in navigator) || !currentFile) return;
-
-    const artwork = [
-      {src: coverUrl(currentFile), sizes: '512x512', type: currentFile.hasArtwork ? 'image/jpeg' : 'image/svg+xml'},
-    ];
-
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: currentFile.title,
-      artist: currentFile.artist || 'StreamSync',
-      album: currentFile.album || status?.roomName || 'Privater Raum',
-      artwork,
-    });
-
-    navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
-    navigator.mediaSession.setActionHandler('play', () => setIsPlaying(true));
-    navigator.mediaSession.setActionHandler('pause', () => setIsPlaying(false));
-    navigator.mediaSession.setActionHandler('previoustrack', () => skip(-1));
-    navigator.mediaSession.setActionHandler('nexttrack', () => skip(1));
-    navigator.mediaSession.setActionHandler('seekto', (details) => {
-      const audio = audioRef.current;
-      if (!audio || details.seekTime === undefined) return;
-      audio.currentTime = details.seekTime;
-    });
-
-    if ('setPositionState' in navigator.mediaSession && duration > 0) {
-      navigator.mediaSession.setPositionState({
-        duration,
-        playbackRate: 1,
-        position: currentTime,
-      });
-    }
-  }, [currentFile, currentTime, duration, isPlaying, status?.roomName, token]);
-
-  async function handleLogin(event: React.FormEvent) {
-    event.preventDefault();
-    setError('');
-    const nextToken = loginToken.trim();
-    if (!nextToken) return;
-
-    try {
-      await loadStatus(nextToken);
-      await loadFiles(nextToken);
-      await loadRoomState(nextToken);
-      sessionStorage.setItem(TOKEN_STORAGE_KEY, nextToken);
-      setToken(nextToken);
-      setLoginToken('');
-      haptic();
-    } catch {
-      setError('Dieser Gruppenschluessel passt nicht zum lokalen Server.');
-    }
-  }
 
   async function handleAuthLogin(username: string, password: string) {
     setError('');
     try {
       const res = await fetch(apiUrl('/api/auth/login'), {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ username, password }),
       });
-      const data: LoginResponse = await res.json();
+      const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'login failed');
       sessionStorage.setItem(TOKEN_STORAGE_KEY, data.token);
       setToken(data.token);
-      setCurrentUser(data.user);
-      await loadFiles(data.token);
-      await loadRoomState(data.token);
-      haptic();
-      setView('library');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Anmeldung fehlgeschlagen');
-    }
+      await loadFiles();
+      await loadRoomState();
+      haptic(); navigate('home');
+    } catch (e) { setError(e instanceof Error ? e.message : 'Anmeldung fehlgeschlagen'); }
   }
 
   async function handleAuthRegister(username: string, password: string, inviteCode: string) {
     setError('');
     try {
       const res = await fetch(apiUrl('/api/auth/register'), {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ username, password, inviteCode }),
       });
-      const data: LoginResponse = await res.json();
+      const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'registration failed');
       sessionStorage.setItem(TOKEN_STORAGE_KEY, data.token);
       setToken(data.token);
-      setCurrentUser(data.user);
-      await loadFiles(data.token);
-      haptic();
-      setView('library');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Registrierung fehlgeschlagen');
-    }
-  }
-
-  async function loadInvites() {
-    try {
-      const res = await fetch(apiUrl('/api/auth/invites'), {
-        headers: { 'x-auth-token': token },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setInvites(data);
-      }
-    } catch {}
-  }
-
-  async function loadTeamUsers() {
-    try {
-      const res = await fetch(apiUrl('/api/auth/users'), {
-        headers: { 'x-auth-token': token },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setTeamUsers(data);
-      }
-    } catch {}
-  }
-
-  async function createInvite(role: 'admin' | 'member', maxUses: number) {
-    try {
-      const res = await fetch(apiUrl('/api/auth/invite'), {
-        method: 'POST',
-        headers: { 'x-auth-token': token, 'content-type': 'application/json' },
-        body: JSON.stringify({ role, maxUses }),
-      });
-      if (res.ok) {
-        loadInvites();
-        haptic();
-      }
-    } catch {}
-  }
-
-  async function deleteInvite(id: string) {
-    try {
-      const res = await fetch(apiUrl(`/api/auth/invite/${id}`), {
-        method: 'DELETE',
-        headers: { 'x-auth-token': token },
-      });
-      if (res.ok) {
-        loadInvites();
-        haptic();
-      }
-    } catch {}
+      await loadFiles();
+      haptic(); navigate('home');
+    } catch (e) { setError(e instanceof Error ? e.message : 'Registrierung fehlgeschlagen'); }
   }
 
   function logout() {
-    haptic();
-    setToken('');
-    setLoginToken('');
-    setCurrentUser(null);
-    setFiles([]);
-    setRoomState({likedIds: [], queue: [], updatedAt: ''});
-    setCurrentFile(null);
-    setIsPlaying(false);
+    haptic(); setToken(''); setFiles([]); setRoomState({ likedIds: [], queue: [], playlists: [], updatedAt: '' });
+    setCurrentFile(null); setIsPlaying(false);
     sessionStorage.removeItem(TOKEN_STORAGE_KEY);
   }
 
-  function playFile(file: ApiFile) {
-    haptic();
-    setCurrentFile(file);
-    setIsPlaying(true);
-    setIsPlayerOpen(true);
-  }
+  const playFile = useCallback((file: ApiFile) => {
+    haptic(); setCurrentFile(file); setIsPlaying(true); setIsPlayerOpen(true);
+  }, []);
 
-  function togglePlay() {
-    haptic();
-    setIsPlaying((prev) => !prev);
-  }
+  const togglePlay = useCallback(() => { haptic(); setIsPlaying((prev) => !prev); }, []);
 
   const skip = useCallback((offset: number) => {
     if (files.length === 0 || !currentFile) return;
     haptic();
     let nextIndex: number;
     if (shuffle) {
-      do {
-        nextIndex = Math.floor(Math.random() * files.length);
-      } while (files.length > 1 && nextIndex === files.findIndex((f) => f.id === currentFile.id));
+      do { nextIndex = Math.floor(Math.random() * files.length); }
+      while (files.length > 1 && nextIndex === files.findIndex((f) => f.id === currentFile.id));
     } else {
       const index = files.findIndex((file) => file.id === currentFile.id);
       nextIndex = (index + offset + files.length) % files.length;
     }
-    setCurrentFile(files[nextIndex]);
-    setIsPlaying(true);
+    setCurrentFile(files[nextIndex]); setIsPlaying(true);
   }, [files, currentFile, shuffle]);
 
-  const toggleShuffle = useCallback(() => {
-    haptic();
-    setShuffle((prev) => !prev);
-  }, []);
-
+  const toggleShuffle = useCallback(() => { haptic(); setShuffle((prev) => !prev); }, []);
   const toggleRepeat = useCallback(() => {
     haptic();
-    setRepeat((prev) => {
-      if (prev === 'off') return 'all';
-      if (prev === 'all') return 'one';
-      return 'off';
-    });
+    setRepeat((prev) => { if (prev === 'off') return 'all'; if (prev === 'all') return 'one'; return 'off'; });
   }, []);
 
-  const changeVolume = useCallback((value: number) => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    audio.volume = value;
-    setVolume(value);
-  }, []);
+  async function uploadFiles(fileList: FileList | File[]) {
+    const selected = Array.from(fileList).filter((file) => file.type.startsWith('audio/') || file.type.startsWith('video/'));
+    if (selected.length === 0) { setUpload({ active: false, progress: 0, message: 'Bitte Audio- oder Videodateien auswaehlen.' }); return; }
+    setUpload({ active: true, progress: 0, message: 'Upload startet...' });
+    try {
+      for (let index = 0; index < selected.length; index += 1) {
+        const file = selected[index];
+        setUpload({ active: true, progress: Math.round((index / selected.length) * 100), message: `${file.name} wird uebertragen...` });
+        const response = await fetch(apiUrl(`/api/upload?name=${encodeURIComponent(file.name)}`), {
+          method: 'POST', headers: { ...authHeaders, 'content-type': file.type || 'application/octet-stream' }, body: file,
+        });
+        if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.error || `${file.name} konnte nicht hochgeladen werden.`);
+        }
+      }
+      await loadFiles(); haptic(); setUpload({ active: false, progress: 100, message: 'Bibliothek aktualisiert.' });
+    } catch (e) { setUpload({ active: false, progress: 0, message: e instanceof Error ? e.message : 'Upload fehlgeschlagen.' }); }
+  }
+
+  const toggleLike = useCallback(async (file: ApiFile) => {
+    haptic();
+    const response = await fetch(apiUrl(`/api/likes/${file.id}`), {
+      method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ liked: !likedIds.has(file.id) }),
+    });
+    if (response.ok) setRoomState(await response.json());
+  }, [authHeaders, likedIds]);
 
   async function playNextFromQueue() {
     const next = roomState.queue[0];
     if (!next) {
-      if (repeat === 'one') {
-        setCurrentFile(currentFile);
-        setIsPlaying(true);
-        return;
-      }
-      if (repeat === 'all' || files.length === 0) {
-        skip(1);
-        return;
-      }
-      skip(1);
-      return;
+      if (repeat === 'one') { setCurrentFile(currentFile); setIsPlaying(true); return; }
+      if (repeat === 'all' || files.length === 0) { skip(1); return; }
+      skip(1); return;
     }
-
     await removeFromQueue(next.id, false);
     playFile(next.file);
   }
@@ -582,980 +340,290 @@ setFiles(data.files);
     audio.currentTime = (value / 100) * duration;
   }
 
-  function changeView(nextView: View) {
-    haptic();
-    setView(nextView);
-  }
-
-  async function uploadFiles(fileList: FileList | File[]) {
-    const selected = Array.from(fileList).filter((file) => file.type.startsWith('audio/') || file.type.startsWith('video/'));
-    if (selected.length === 0) {
-      setUpload({active: false, progress: 0, message: 'Bitte Audio- oder Videodateien auswaehlen.'});
-      return;
-    }
-
-    setUpload({active: true, progress: 0, message: 'Upload startet...'});
-
-    try {
-      for (let index = 0; index < selected.length; index += 1) {
-        const file = selected[index];
-        setUpload({active: true, progress: Math.round((index / selected.length) * 100), message: `${file.name} wird uebertragen...`});
-        const response = await fetch(apiUrl(`/api/upload?name=${encodeURIComponent(file.name)}`), {
-          method: 'POST',
-          headers: {
-            ...authHeaders,
-            'content-type': file.type || 'application/octet-stream',
-          },
-          body: file,
-        });
-
-        if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(errData.error || `${file.name} konnte nicht hochgeladen werden.`);
-        }
-      }
-
-      await loadFiles();
-      haptic();
-      setUpload({active: false, progress: 100, message: 'Bibliothek aktualisiert.'});
-    } catch (e) {
-      setUpload({active: false, progress: 0, message: e instanceof Error ? e.message : 'Upload fehlgeschlagen.'});
-    }
-  }
-
-  async function toggleLike(file: ApiFile) {
-    haptic();
-    const response = await fetch(apiUrl(`/api/likes/${file.id}`), {
-      method: 'POST',
-      headers: {
-        ...authHeaders,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({liked: !likedIds.has(file.id)}),
-    });
-    if (response.ok) setRoomState(await response.json());
-  }
-
-  async function createPlaylist() {
-    if (!newPlaylistName.trim()) return;
-    haptic();
-    const newPlaylist: Playlist = {
-      id: Date.now().toString(),
-      name: newPlaylistName.trim(),
-      trackIds: [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      isPublic: true,
-    };
-    setPlaylists([...playlists, newPlaylist]);
-    setNewPlaylistName('');
-    setShowCreatePlaylist(false);
-    setView('playlists');
-  }
-
-  async function addToPlaylist(playlistId: string, fileId: string) {
-    haptic();
-    const playlist = playlists.find((p) => p.id === playlistId);
-    if (!playlist || playlist.trackIds.includes(fileId)) return;
-    const updated = { ...playlist, trackIds: [...playlist.trackIds, fileId], updatedAt: new Date().toISOString() };
-    setPlaylists(playlists.map((p) => (p.id === playlistId ? updated : p)));
-  }
-
-  async function removeFromPlaylist(playlistId: string, fileId: string) {
-    haptic();
-    const playlist = playlists.find((p) => p.id === playlistId);
-    if (!playlist) return;
-    const updated = { ...playlist, trackIds: playlist.trackIds.filter((id) => id !== fileId), updatedAt: new Date().toISOString() };
-    setPlaylists(playlists.map((p) => (p.id === playlistId ? updated : p)));
-  }
-
-  async function deletePlaylist(playlistId: string) {
-    haptic();
-    setPlaylists(playlists.filter((p) => p.id !== playlistId));
-  }
-
-  function playAlbum(album: Album) {
-    if (album.tracks.length === 0) return;
-    haptic();
-    setCurrentFile(album.tracks[0]);
-    setIsPlaying(true);
-    setIsPlayerOpen(true);
-  }
-
-  function playArtist(artist: Artist) {
-    if (artist.topTracks.length === 0) return;
-    haptic();
-    setCurrentFile(artist.topTracks[0]);
-    setIsPlaying(true);
-    setIsPlayerOpen(true);
-  }
-
-  function playPlaylist(playlist: Playlist) {
-    const track = files.find((f) => playlist.trackIds.includes(f.id));
-    if (!track) return;
-    haptic();
-    setCurrentFile(track);
-    setIsPlaying(true);
-    setIsPlayerOpen(true);
-  }
-
-  function startSleepTimer(minutes: number) {
-    setSleepTimer(minutes * 60);
-  }
-
-  function cancelSleepTimer() {
-    setSleepTimer(0);
-  }
-
-  useEffect(() => {
-    if (sleepTimer <= 0) return;
-    const timer = setInterval(() => {
-      setSleepTimer((prev) => {
-        if (prev <= 1) {
-          setIsPlaying(false);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [sleepTimer]);
-
-  function updateSettings(newSettings: Partial<UserSettings>) {
-    setSettings((prev) => ({ ...prev, ...newSettings }));
-  }
-
-  function generateShareCode() {
-    const newCode = Math.random().toString(36).substring(2, 8).toUpperCase();
-    setShareCode(newCode);
-    localStorage.setItem('shareCode', newCode);
-    const profile: UserProfile = {
-      id: Date.now().toString(),
-      displayName: status?.roomName || 'StreamSync User',
-      topTracks: files.slice(0, 10).map((f) => f.id),
-      isPublic: true,
-      shareCode: newCode,
-      createdAt: new Date().toISOString(),
-    };
-    setUserProfile(profile);
-    haptic();
-  }
-
-  function togglePublic() {
-    if (userProfile) {
-      setUserProfile({ ...userProfile, isPublic: !userProfile.isPublic });
-    } else {
-      generateShareCode();
-    }
-  }
-
-  function copyShareLink() {
-    const link = `${window.location.origin}/public/${shareCode}`;
-    navigator.clipboard.writeText(link);
-    haptic();
-  }
-
-  useEffect(() => {
-    if (!shareCode) return;
-    fetch(apiUrl(`/api/shared`))
-      .then((res) => res.json())
-      .then((data) => setSharedRooms(data.rooms || []))
-      .catch(() => {});
-  }, [shareCode]);
-
-  async function addToQueue(file: ApiFile) {
-    haptic();
-    const response = await fetch(apiUrl('/api/queue'), {
-      method: 'POST',
-      headers: {
-        ...authHeaders,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({fileId: file.id}),
-    });
-    if (response.ok) {
-      setRoomState(await response.json());
-      setView('queue');
-    }
-  }
-
   async function removeFromQueue(itemId: string, updateUi = true) {
-    const response = await fetch(apiUrl(`/api/queue/${itemId}`), {
-      method: 'DELETE',
-      headers: authHeaders,
-    });
+    const response = await fetch(apiUrl(`/api/queue/${itemId}`), { method: 'DELETE', headers: authHeaders });
     if (response.ok && updateUi) setRoomState(await response.json());
   }
 
   async function clearQueue() {
     haptic();
-    const response = await fetch(apiUrl('/api/queue/clear'), {
-      method: 'POST',
-      headers: authHeaders,
-    });
+    const response = await fetch(apiUrl('/api/queue/clear'), { method: 'POST', headers: authHeaders });
     if (response.ok) setRoomState(await response.json());
   }
 
-  const showLogin = view === 'login';
-  const showRegister = view === 'register';
+  const openUpload = useCallback(() => { uploadInputRef.current?.click(); }, []);
 
-  if (!isAuthenticated || showLogin) {
-    return <LoginView error={error} onLogin={handleAuthLogin} />;
-  }
+  const playAlbum = useCallback((album: Album) => {
+    if (album.tracks[0]) playFile(album.tracks[0]);
+  }, [playFile]);
 
-  if (showRegister) {
-    return <RegisterView error={error} inviteCode={registerCode} onRegister={handleAuthRegister} />;
-  }
+  const addToQueue = useCallback(async (file: ApiFile) => {
+    haptic();
+    const response = await fetch(apiUrl('/api/queue'), {
+      method: 'POST', headers: { ...authHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ fileId: file.id }),
+    });
+    if (response.ok) setRoomState(await response.json());
+  }, [authHeaders]);
+
+  const handlePlaylistSelect = useCallback((id: string) => {
+    navigate('playlist-detail', { playlistId: id });
+    setSidebarOpen(false);
+  }, [navigate]);
+
+  const handleLikedSongs = useCallback(() => { navigate('liked'); setSidebarOpen(false); }, [navigate]);
+
+  const handleTabChange = useCallback((tab: string) => { navigate(tab as View); setSidebarOpen(false); }, [navigate]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      switch (e.code) {
+        case 'Space':
+          e.preventDefault();
+          if (currentFile) togglePlay();
+          break;
+        case 'ArrowRight':
+          if (e.shiftKey) skip(1);
+          break;
+        case 'ArrowLeft':
+          if (e.shiftKey) skip(-1);
+          break;
+        case 'KeyS':
+          if (e.shiftKey) toggleShuffle();
+          break;
+        case 'KeyR':
+          if (e.shiftKey) toggleRepeat();
+          break;
+        case 'KeyM':
+          if (e.shiftKey) {
+            const v = volume > 0 ? 0 : 0.5;
+            if (audioRef.current) audioRef.current.volume = v;
+            setVolume(v);
+          }
+          break;
+        case 'KeyQ':
+          if (e.shiftKey) setShowQueue((prev) => !prev);
+          break;
+        case 'KeyL':
+          if (e.shiftKey && currentFile) toggleLike(currentFile);
+          break;
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentFile, volume, togglePlay, skip, toggleShuffle, toggleRepeat, toggleLike]);
+
+  const showLogin = view === 'login' || view === 'register';
+
+  if (!isAuthenticated || showLogin) return <LoginView onLogin={handleAuthLogin} error={error} />;
 
   return (
-    <div className="app-shell">
-      <BackgroundGlow coverUrl={coverUrl(currentFile)} />
-      <audio
-        ref={audioRef}
-        onEnded={() => void playNextFromQueue()}
-        onTimeUpdate={(event) => setCurrentTime(event.currentTarget.currentTime)}
-        onDurationChange={(event) => setDuration(event.currentTarget.duration)}
-      />
-      <Header status={status} onLogout={logout} />
+    <>
+      <div className="app-layout">
+        {/* Mobile sidebar overlay */}
+        {sidebarOpen && (
+          <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />
+        )}
 
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-4 pb-44 pt-3 sm:px-6 lg:px-8">
-        <NowPlayingHero
-          file={currentFile}
-          isPlaying={isPlaying}
-          currentTime={currentTime}
-          duration={duration}
-          progress={progress}
-          onToggle={togglePlay}
-          onSkip={skip}
-          onSeek={seek}
-          shuffle={shuffle}
-          repeat={repeat}
-          volume={volume}
-          onShuffle={toggleShuffle}
-          onRepeat={toggleRepeat}
-          onVolume={changeVolume}
-        />
+        <div className={`sidebar-responsive ${sidebarOpen ? 'is-open' : ''}`}>
+          <Sidebar
+            activeTab={view as NavTab}
+            onTabChange={handleTabChange}
+            onUpload={openUpload}
+            playlists={sidebarPlaylists}
+            onPlaylistSelect={handlePlaylistSelect}
+            likedCount={likedIds.size}
+            onLikedSongs={handleLikedSongs}
+          />
+        </div>
 
-        <QuickStats status={status} fileCount={files.length} />
+        <div className="main-content">
+          <audio ref={audioRef} onEnded={() => void playNextFromQueue()} onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)} onDurationChange={(e) => setDuration(e.currentTarget.duration)} />
 
-        <AnimatePresence mode="wait">
-          {view === 'library' && (
-            <LibraryView
-              files={filteredFiles}
-              query={query}
-              setQuery={setQuery}
-              currentFile={currentFile}
-              isPlaying={isPlaying}
-              likedIds={likedIds}
-              onPlay={playFile}
-              onLike={toggleLike}
-              onQueue={addToQueue}
-              onRefresh={() => void loadFiles()}
-              onOpenUpload={() => changeView('upload')}
-            />
-          )}
+          <div ref={mainScrollRef} className="main-scroll">
+            <div className="main-top-bar">
+              <div className="main-top-bar-nav">
+                <button className="top-bar-nav-btn mobile-menu-btn" aria-label="Menu" onClick={() => setSidebarOpen(true)}>
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M3 12h18M3 6h18M3 18h18" />
+                  </svg>
+                </button>
+                <button className="top-bar-nav-btn" aria-label="Zurueck" onClick={() => window.history.back()}>
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+                <button className="top-bar-nav-btn" aria-label="Vorwaerts" disabled>
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+                <span className="top-bar-title-text retro-glow">JT-MP3</span>
+              </div>
 
-          {view === 'albums' && (
-            <AlbumsView
-              albums={albums}
-              onPlayAlbum={playAlbum}
-              onSelectAlbum={setSelectedAlbum}
-            />
-          )}
+              {(view === 'home' || view === 'search') && (
+                <div className="main-top-bar-search">
+                  <Search className="search-icon" />
+                  <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    className="main-search-input"
+                    placeholder="Was moechtest du hoeren?"
+                  />
+                </div>
+              )}
+            </div>
 
-          {view === 'artists' && (
-            <ArtistsView
-              artists={artists}
-              onPlayArtist={playArtist}
-              onSelectArtist={setSelectedArtist}
-            />
-          )}
+            <Suspense fallback={<div className="loading-spinner" />}>
+              {view === 'home' && (
+                <HomeView
+                  files={files} filteredFiles={filteredFiles}
+                  currentFile={currentFile} isPlaying={isPlaying} likedIds={likedIds}
+                  onPlay={playFile} onLike={toggleLike} onOpenUpload={openUpload}
+                  likedFiles={likedFiles} albums={albums} onAlbumSelect={setSelectedAlbum}
+                  onArtistSelect={setSelectedArtist} onPlayAlbum={playAlbum}
+                  onAddToQueue={addToQueue}
+                />
+              )}
 
-          {view === 'playlists' && (
-            <PlaylistsView
-              playlists={playlists}
-              files={files}
-              onPlayPlaylist={playPlaylist}
-              onCreatePlaylist={() => setShowCreatePlaylist(true)}
-              onDeletePlaylist={deletePlaylist}
-              showCreate={showCreatePlaylist}
-              newPlaylistName={newPlaylistName}
-              setNewPlaylistName={setNewPlaylistName}
-              onConfirmCreate={createPlaylist}
-              onCancel={() => setShowCreatePlaylist(false)}
-            />
-          )}
+              {view === 'search' && (
+                <SearchView
+                  files={filteredFiles} query={query}
+                  currentFile={currentFile} isPlaying={isPlaying} likedIds={likedIds}
+                  onPlay={playFile} onLike={toggleLike}
+                  albums={albums} artists={artists} onAlbumSelect={(a) => { navigate('album-detail', { albumId: a.id }); }}
+                  onArtistSelect={(a) => { navigate('artist-detail', { artistId: a.id }); }}
+                />
+              )}
 
-          {view === 'discover' && (
-            <DiscoverView
-              files={files}
-              likedIds={likedIds}
-              onPlay={playFile}
-              onLike={toggleLike}
-            />
-          )}
+              {view === 'library' && (
+                <LibraryView
+                  files={files} currentFile={currentFile} isPlaying={isPlaying} likedIds={likedIds}
+                  onPlay={playFile} onLike={toggleLike} onOpenUpload={openUpload}
+                  albums={albums} artists={artists} playlists={roomState.playlists}
+                  filter={libraryFilter} setFilter={setLibraryFilter}
+                  onAlbumSelect={(a) => { navigate('album-detail', { albumId: a.id }); }}
+                  onArtistSelect={(a) => { navigate('artist-detail', { artistId: a.id }); }}
+                  onPlaylistSelect={(p) => { navigate('playlist-detail', { playlistId: p.id }); }}
+                />
+              )}
 
-          {view === 'charts' && (
-            <ChartsView
-              charts={charts}
-              onPlay={playFile}
-            />
-          )}
+              {view === 'liked' && (
+                <LikedSongsView
+                  likedFiles={likedFiles} currentFile={currentFile} isPlaying={isPlaying}
+                  onPlay={playFile} onLike={toggleLike}
+                />
+              )}
 
-          {view === 'settings' && (
-            <SettingsView
-              settings={settings}
-              sleepTimer={sleepTimer}
-              onUpdateSettings={updateSettings}
-              onStartSleepTimer={startSleepTimer}
-              onCancelSleepTimer={cancelSleepTimer}
-            />
-          )}
+              {view === 'album-detail' && selectedAlbum && (
+                <AlbumDetailView
+                  album={selectedAlbum} currentFile={currentFile} isPlaying={isPlaying}
+                  onPlay={playFile} onLike={toggleLike} onBack={() => navigate('library')}
+                  onAddToQueue={addToQueue}
+                />
+              )}
 
-          {view === 'queue' && (
-            <QueueView
-              queue={roomState.queue}
-              onPlay={playFile}
-              onRemove={(item) => void removeFromQueue(item.id)}
-              onClear={() => void clearQueue()}
-            />
-          )}
+              {view === 'artist-detail' && selectedArtist && (
+                <ArtistDetailView
+                  artist={selectedArtist} currentFile={currentFile} isPlaying={isPlaying}
+                  onPlay={playFile} onLike={toggleLike} onBack={() => navigate('library')}
+                  onAddToQueue={addToQueue}
+                />
+              )}
 
-          {view === 'upload' && (
-            <UploadView inputRef={fileInputRef} upload={upload} onFiles={uploadFiles} />
-          )}
+              {view === 'playlist-detail' && selectedPlaylist && (
+                <PlaylistDetailView
+                  playlist={selectedPlaylist} files={files} currentFile={currentFile} isPlaying={isPlaying}
+                  likedIds={likedIds}
+                  onPlay={playFile} onLike={toggleLike} onBack={() => navigate('library')}
+                  onAddToQueue={addToQueue}
+                />
+              )}
+            </Suspense>
+          </div>
 
-          {view === 'room' && (
-            <RoomView status={status} onRefresh={() => void loadStatus()} />
-          )}
+          <div className="player-bar">
+            <div className="player-track-info">
+              {currentFile && (
+                <>
+                  <img src={getCoverUrl(currentFile, token)} alt="" className="player-track-cover" />
+                  <div className="player-track-text">
+                    <p className="player-track-title">{currentFile.title}</p>
+                    <p className="player-track-artist">{trackArtist(currentFile)}</p>
+                  </div>
+                  <LikeButton liked={likedIds.has(currentFile.id)} onToggle={() => toggleLike(currentFile)} size={18} />
+                </>
+              )}
+            </div>
 
-          {view === 'share' && (
-            <ShareView
-              userProfile={userProfile}
-              shareCode={shareCode}
-              files={files}
-              onGenerateCode={generateShareCode}
-              onTogglePublic={togglePublic}
-              onCopyLink={copyShareLink}
-            />
-          )}
+            <div className="player-controls">
+              <div className="player-buttons-row">
+                <button onClick={toggleShuffle} className={`player-btn-icon ${shuffle ? 'is-active' : ''}`} aria-label="Zufallswiedergabe"><Shuffle className="h-4 w-4" /></button>
+                <button onClick={() => skip(-1)} className="player-btn-icon" aria-label="Zurueck"><SkipBack className="h-5 w-5" /></button>
+                <button onClick={togglePlay} className="player-btn-play" aria-label={isPlaying ? 'Pause' : 'Abspielen'}>
+                  {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5 fill-current translate-x-0.5" />}
+                </button>
+                <button onClick={() => skip(1)} className="player-btn-icon" aria-label="Weiter"><SkipForward className="h-5 w-5" /></button>
+                <button onClick={toggleRepeat} className={`player-btn-icon ${repeat !== 'off' ? 'is-active' : ''}`} aria-label="Wiederholen">{repeat === 'one' ? <Repeat1 className="h-4 w-4" /> : <Repeat className="h-4 w-4" />}</button>
+              </div>
+              <div className="player-seek-row">
+                <span className="player-time retro-mono">{formatTime(currentTime)}</span>
+                <div className="player-seek-bar" onClick={(e) => { const rect = e.currentTarget.getBoundingClientRect(); const percent = ((e.clientX - rect.left) / rect.width) * 100; seek(Math.max(0, Math.min(100, percent))); }}>
+                  <div className="player-seek-fill" style={{ width: `${progress}%` }} />
+                </div>
+                <span className="player-time retro-mono">{formatTime(duration)}</span>
+              </div>
+            </div>
 
-          {view === 'public' && (
-            <PublicRoomsView
-              sharedRooms={sharedRooms}
-              files={files}
-              onPlay={playFile}
-            />
-          )}
-        </AnimatePresence>
-      </main>
+            <div className="player-volume">
+              <button onClick={() => { const v = volume > 0 ? 0 : 0.5; if (audioRef.current) audioRef.current.volume = v; setVolume(v); }} className="player-btn-icon" aria-label={volume > 0 ? 'Stumm' : 'Ton an'}>
+                {volume === 0 ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+              </button>
+              <div className="player-volume-bar" onClick={(e) => { const rect = e.currentTarget.getBoundingClientRect(); const v = (e.clientX - rect.left) / rect.width; if (audioRef.current) audioRef.current.volume = v; setVolume(v); }}>
+                <div className="player-volume-fill" style={{ width: `${volume * 100}%` }} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
-      <BottomDock
-        view={view}
-        setView={changeView}
-        file={currentFile}
-        isPlaying={isPlaying}
-        queueCount={roomState.queue.length}
-        progress={progress}
-        onToggle={togglePlay}
-        onSkip={skip}
-        onOpenPlayer={() => setIsPlayerOpen(true)}
-        shuffle={shuffle}
-        repeat={repeat}
-      />
+      <input type="file" ref={uploadInputRef} multiple accept="audio/*,video/*" className="hidden" onChange={(e) => e.target.files && void uploadFiles(e.target.files)} />
+
+      {upload.active && (
+        <div className="upload-toast">
+          <div className="upload-toast-header">
+            <Upload className="h-5 w-5" />
+            <span className="upload-toast-title">Upload laeuft...</span>
+            <button className="upload-toast-close" onClick={() => setUpload({ active: false, progress: 0, message: '' })}>
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="upload-toast-progress">
+            <div className="upload-toast-fill" style={{ width: `${upload.progress}%` }} />
+          </div>
+          <p className="upload-toast-text">{upload.message}</p>
+        </div>
+      )}
+
+      <QueueSheet open={showQueue} current={currentFile} queue={roomState.queue} token={token} onClose={() => setShowQueue(false)} onPlay={playFile} onRemove={(id) => void removeFromQueue(id)} onClear={() => void clearQueue()} />
 
       <AnimatePresence>
         {isPlayerOpen && (
           <FullscreenPlayer
-            file={currentFile}
-            isPlaying={isPlaying}
-            currentTime={currentTime}
-            duration={duration}
-            progress={progress}
-            onClose={() => setIsPlayerOpen(false)}
-            onToggle={togglePlay}
-            onSkip={skip}
-            onSeek={seek}
+            file={currentFile} token={token} isPlaying={isPlaying} currentTime={currentTime} duration={duration}
+            progress={progress} volume={volume} shuffle={shuffle} repeat={repeat}
+            liked={currentFile ? likedIds.has(currentFile.id) : false}
+            onClose={() => setIsPlayerOpen(false)} onToggle={togglePlay}
+            onSkip={skip} onSeek={seek} onVolume={(v) => { if (audioRef.current) audioRef.current.volume = v; setVolume(v); }}
+            onShuffle={toggleShuffle} onRepeat={toggleRepeat}
+            onToggleLike={() => currentFile && toggleLike(currentFile)}
+            onShare={() => {}} onOpenQueue={() => setShowQueue(true)}
           />
         )}
       </AnimatePresence>
-    </div>
+
+      {ContextMenuComponent}
+    </>
   );
 }
 
-function LoginView({token, error, setToken, onLogin}: {
-  token: string;
-  error: string;
-  setToken: (value: string) => void;
-  onLogin: (event: React.FormEvent) => void;
-}) {
-  return (
-    <main className="app-shell flex min-h-screen items-center justify-center px-4 py-8">
-      <motion.section initial={{opacity: 0, y: 18}} animate={{opacity: 1, y: 0}} className="w-full max-w-md">
-        <div className="mb-6 flex items-center gap-3">
-          <div className="brand-mark">
-            <Headphones className="h-7 w-7" />
-          </div>
-          <div>
-            <p className="text-sm font-bold text-mint">StreamSync</p>
-            <h1 className="text-2xl font-black leading-tight">Privater Musikraum</h1>
-          </div>
-        </div>
-
-        <form onSubmit={onLogin} className="surface p-5">
-          <img src="/icon.svg" alt="" className="mb-5 h-20 w-20 rounded-lg object-cover" />
-          <h2 className="text-2xl font-black leading-tight">Sicher rein, sofort hoeren.</h2>
-          <p className="mt-2 text-sm leading-6 text-muted">Dein lokaler Raum bleibt privat. Wer den Schluessel kennt, kann im Netzwerk streamen und Musik teilen.</p>
-
-          <label className="mb-2 mt-6 block text-sm font-bold text-muted" htmlFor="token">Gruppenschluessel</label>
-          <div className="relative">
-            <Lock className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted" />
-            <input
-              id="token"
-              type="password"
-              value={token}
-              onChange={(event) => setToken(event.target.value)}
-              autoFocus
-              className="touch-input pl-12"
-              placeholder="lokaler Gruppen-Key"
-            />
-          </div>
-
-          {error && (
-            <p className="mt-3 flex items-center gap-2 text-sm text-red">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              {error}
-            </p>
-          )}
-
-          <button className="primary-button mt-5 w-full">
-            Raum betreten
-          </button>
-        </form>
-      </motion.section>
-    </main>
-  );
-}
-
-function Header({status, onLogout}: {status: ApiStatus | null; onLogout: () => void}) {
-  return (
-    <header className="sticky top-0 z-30 border-b border-line/80 bg-night/88 px-4 py-3 backdrop-blur-xl">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="brand-mark h-10 w-10">
-            <Disc3 className="h-6 w-6" />
-          </div>
-          <div className="min-w-0">
-            <h1 className="truncate text-lg font-black">StreamSync</h1>
-            <p className="truncate text-xs text-muted">{status?.roomName ?? 'Lokaler Raum'}</p>
-          </div>
-        </div>
-        <button onClick={onLogout} className="icon-button" aria-label="Abmelden">
-          <LogOut className="h-5 w-5" />
-        </button>
-      </div>
-    </header>
-  );
-}
-
-function NowPlayingHero({file, isPlaying, currentTime, duration, progress, onToggle, onSkip, onSeek, shuffle, repeat, volume, onShuffle, onRepeat, onVolume}: {
-  file: ApiFile | null;
-  isPlaying: boolean;
-  currentTime: number;
-  duration: number;
-  progress: number;
-  onToggle: () => void;
-  onSkip: (offset: number) => void;
-  onSeek: (value: number) => void;
-  shuffle: boolean;
-  repeat: 'off' | 'all' | 'one';
-  volume: number;
-  onShuffle: () => void;
-  onRepeat: () => void;
-  onVolume: (value: number) => void;
-}) {
-  return (
-    <section className="surface overflow-hidden p-4 sm:p-5">
-      <div className="grid gap-4 sm:grid-cols-[12rem_1fr] sm:items-end">
-        <div className="cover-wrap mx-auto w-full max-w-56 sm:mx-0 relative group">
-          <img src={coverUrl(file, token)} alt="" className="cover-art" />
-          <button
-            onClick={onToggle}
-            disabled={!file}
-            className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm"
-          >
-            {isPlaying ? <Pause className="h-12 w-12" /> : <Play className="h-12 w-12 fill-current" />}
-          </button>
-        </div>
-
-        <div className="min-w-0">
-          <p className="mb-2 text-sm font-bold text-mint">Jetzt laeuft</p>
-          <h2 className="line-clamp-2 text-3xl font-black leading-tight sm:text-5xl">
-            {file?.title ?? 'Waehle den ersten Track'}
-          </h2>
-          <p className="mt-2 truncate text-sm text-muted">
-            {file ? trackMeta(file) : 'Lege Musik ab oder teile direkt aus dem Raum.'}
-          </p>
-
-          <div className="mt-5">
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={Number.isFinite(progress) ? progress : 0}
-              onChange={(event) => onSeek(Number(event.target.value))}
-              className="seek-slider"
-              aria-label="Position"
-            />
-            <div className="mt-2 flex justify-between text-xs font-bold text-muted">
-              <span>{formatTime(currentTime)}</span>
-              <span>{formatTime(duration)}</span>
-            </div>
-          </div>
-
-          <div className="mt-5 flex items-center justify-center sm:justify-start gap-2">
-            <button
-              onClick={onShuffle}
-              className={`round-button ${shuffle ? 'text-mint border-mint' : ''}`}
-              aria-label="Zufallswiedergabe"
-            >
-              <Shuffle className="h-4 w-4" />
-            </button>
-            <button onClick={() => onSkip(-1)} className="round-button" aria-label="Zurueck">
-              <SkipBack className="h-5 w-5" />
-            </button>
-            <button onClick={onToggle} disabled={!file} className="play-button" aria-label={isPlaying ? 'Pausieren' : 'Abspielen'}>
-              {isPlaying ? <Pause className="h-8 w-8" /> : <Play className="h-8 w-8 fill-current" />}
-            </button>
-            <button onClick={() => onSkip(1)} className="round-button" aria-label="Weiter">
-              <SkipForward className="h-5 w-5" />
-            </button>
-            <button
-              onClick={onRepeat}
-              className={`round-button ${repeat !== 'off' ? 'text-mint border-mint' : ''}`}
-              aria-label="Wiederholen"
-            >
-              {repeat === 'one' ? <Repeat1 className="h-4 w-4" /> : <Repeat className="h-4 w-4" />}
-            </button>
-
-            <div className="ml-3 flex items-center gap-2">
-              <Volume2 className="h-4 w-4 text-muted" />
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={volume * 100}
-                onChange={(event) => onVolume(Number(event.target.value) / 100)}
-                className="w-20 h-1 accent-mint"
-                aria-label="Lautstaerke"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function QuickStats({status, fileCount}: {status: ApiStatus | null; fileCount: number}) {
-  return (
-    <section className="grid grid-cols-3 gap-2">
-      <Stat icon={<Users className="h-4 w-4" />} label="Limit" value={`${status?.maxPeers ?? 50}`} />
-      <Stat icon={<Wifi className="h-4 w-4" />} label="Live" value={`${status?.livePeers ?? 0}`} />
-      <Stat icon={<FileAudio className="h-4 w-4" />} label="Tracks" value={`${fileCount}`} />
-    </section>
-  );
-}
-
-function Stat({icon, label, value}: {icon: React.ReactNode; label: string; value: string}) {
-  return (
-    <div className="surface-quiet px-3 py-3">
-      <div className="mb-2 text-mint">{icon}</div>
-      <p className="text-[11px] font-bold text-muted">{label}</p>
-      <p className="truncate text-sm font-black">{value}</p>
-    </div>
-  );
-}
-
-function LibraryView({files, query, setQuery, currentFile, isPlaying, likedIds, onPlay, onLike, onQueue, onRefresh, onOpenUpload}: {
-  files: ApiFile[];
-  query: string;
-  setQuery: (value: string) => void;
-  currentFile: ApiFile | null;
-  isPlaying: boolean;
-  likedIds: Set<string>;
-  onPlay: (file: ApiFile) => void;
-  onLike: (file: ApiFile) => void;
-  onQueue: (file: ApiFile) => void;
-  onRefresh: () => void;
-  onOpenUpload: () => void;
-}) {
-  return (
-    <motion.section initial={{opacity: 0, y: 12}} animate={{opacity: 1, y: 0}} exit={{opacity: 0, y: -12}} className="space-y-4">
-      <div className="flex items-center gap-2">
-        <div className="relative min-w-0 flex-1">
-          <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted" />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} className="touch-input pl-12" placeholder="Suchen" />
-        </div>
-        <button onClick={onRefresh} className="icon-button h-12 w-12" aria-label="Aktualisieren">
-          <RefreshCcw className="h-5 w-5" />
-        </button>
-        <button onClick={onOpenUpload} className="icon-button h-12 w-12 bg-mint text-night" aria-label="Teilen">
-          <Plus className="h-5 w-5" />
-        </button>
-      </div>
-
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-black">Bibliothek</h2>
-        <p className="text-sm font-bold text-muted">{files.length} Dateien</p>
-      </div>
-
-      {files.length === 0 ? (
-        <div className="empty-state">
-          <Disc3 className="h-11 w-11 text-mint" />
-          <h3 className="text-xl font-black">Noch nichts im Raum</h3>
-          <p className="max-w-sm text-sm leading-6 text-muted">Lege Dateien in den Medienordner oder lade sie direkt ueber den Teilen-Tab hoch.</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {files.map((file) => (
-            <motion.div key={file.id} className="track-row" whileHover={{ scale: 1.01, backgroundColor: 'rgba(24, 32, 28, 0.8)' }} whileTap={{ scale: 0.99 }}>
-              <button onClick={() => onPlay(file)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                <img src={coverUrl(file)} alt="" className="h-14 w-14 rounded-lg object-cover" />
-                <div className="min-w-0 flex-1">
-                <p className="truncate text-base font-black">{file.title}</p>
-                <p className="mt-1 truncate text-xs font-bold text-muted">{trackMeta(file)}</p>
-                </div>
-              </button>
-              <button onClick={() => onLike(file)} className={`track-play ${likedIds.has(file.id) ? 'is-liked' : ''}`} aria-label={likedIds.has(file.id) ? 'Like entfernen' : 'Liken'}>
-                <Heart className="h-4 w-4" />
-              </button>
-              <button onClick={() => onQueue(file)} className={`track-play ${currentFile?.id === file.id && isPlaying ? 'is-playing' : ''}`} aria-label="Zur Queue hinzufuegen">
-                <ListMusic className="h-4 w-4" />
-              </button>
-            </motion.div>
-          ))}
-        </div>
-      )}
-    </motion.section>
-  );
-}
-
-function UploadView({inputRef, upload, onFiles}: {
-  inputRef: React.RefObject<HTMLInputElement | null>;
-  upload: UploadState;
-  onFiles: (files: FileList | File[]) => void;
-}) {
-  return (
-    <motion.section initial={{opacity: 0, y: 12}} animate={{opacity: 1, y: 0}} exit={{opacity: 0, y: -12}} className="space-y-4">
-      <div
-        onDragOver={(event) => event.preventDefault()}
-        onDrop={(event) => {
-          event.preventDefault();
-          void onFiles(event.dataTransfer.files);
-        }}
-        className="upload-zone"
-      >
-        <Upload className="h-12 w-12 text-mint" />
-        <h2 className="text-3xl font-black leading-tight">Teilen ohne Umwege</h2>
-        <p className="max-w-md text-sm leading-6 text-muted">Audio oder Video auswaehlen. Die Dateien bleiben lokal und sind sofort im Raum verfuegbar.</p>
-        <input ref={inputRef} type="file" multiple accept="audio/*,video/*" className="hidden" onChange={(event) => event.target.files && void onFiles(event.target.files)} />
-        <button onClick={() => inputRef.current?.click()} className="primary-button">
-          Dateien auswaehlen
-        </button>
-      </div>
-
-      <div className="surface p-4">
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="font-black">Upload</h3>
-          <span className="text-sm font-bold text-muted">{upload.progress}%</span>
-        </div>
-        <div className="h-2 overflow-hidden rounded-lg bg-line">
-          <div className="h-full bg-mint transition-all duration-300" style={{width: `${upload.progress}%`}} />
-        </div>
-        <p className="mt-3 flex items-center gap-2 text-sm font-bold text-muted">
-          {upload.active ? <RefreshCcw className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4 text-mint" />}
-          {upload.message || 'Bereit fuer deine Musik.'}
-        </p>
-      </div>
-    </motion.section>
-  );
-}
-
-function QueueView({queue, onPlay, onRemove, onClear}: {
-  queue: QueueItem[];
-  onPlay: (file: ApiFile) => void;
-  onRemove: (item: QueueItem) => void;
-  onClear: () => void;
-}) {
-  return (
-    <motion.section initial={{opacity: 0, y: 12}} animate={{opacity: 1, y: 0}} exit={{opacity: 0, y: -12}} className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="text-sm font-bold text-mint">Gemeinsam hoeren</p>
-          <h2 className="text-2xl font-black">Queue</h2>
-        </div>
-        <button onClick={onClear} disabled={queue.length === 0} className="icon-button" aria-label="Queue leeren">
-          <Trash2 className="h-5 w-5" />
-        </button>
-      </div>
-
-      {queue.length === 0 ? (
-        <div className="empty-state">
-          <ListMusic className="h-11 w-11 text-mint" />
-          <h3 className="text-xl font-black">Die Queue ist frei</h3>
-          <p className="max-w-sm text-sm leading-6 text-muted">Fuege Tracks aus der Bibliothek hinzu. Alle verbundenen Geraete sehen die Aenderung live.</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {queue.map((item, index) => (
-            <motion.div key={item.id} className="track-row" whileHover={{ scale: 1.01, backgroundColor: 'rgba(24, 32, 28, 0.8)' }} whileTap={{ scale: 0.99 }}>
-              <button onClick={() => onPlay(item.file)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-soft text-sm font-black text-mint">{index + 1}</div>
-                <img src={coverUrl(item.file)} alt="" className="h-14 w-14 rounded-lg object-cover" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-base font-black">{item.file.title}</p>
-                  <p className="mt-1 truncate text-xs font-bold text-muted">{trackMeta(item.file)}</p>
-                </div>
-              </button>
-              <button onClick={() => onRemove(item)} className="track-play" aria-label="Aus Queue entfernen">
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </motion.div>
-          ))}
-        </div>
-      )}
-    </motion.section>
-  );
-}
-
-function RoomView({status, onRefresh}: {status: ApiStatus | null; onRefresh: () => void}) {
-  return (
-    <motion.section initial={{opacity: 0, y: 12}} animate={{opacity: 1, y: 0}} exit={{opacity: 0, y: -12}} className="space-y-4">
-      <div className="surface p-5">
-        <div className="mb-5 flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm font-bold text-mint">Raum</p>
-            <h2 className="text-2xl font-black">{status?.roomName ?? 'StreamSync'}</h2>
-          </div>
-          <button onClick={onRefresh} className="icon-button" aria-label="Status aktualisieren">
-            <RefreshCcw className="h-5 w-5" />
-          </button>
-        </div>
-        <dl className="space-y-3 text-sm">
-          <InfoRow label="Host" value={status?.host ?? 'lokal'} />
-          <InfoRow label="Live" value={`${status?.livePeers ?? 0} verbunden`} />
-          <InfoRow label="Maximal" value={`${status?.maxPeers ?? 50} Personen`} />
-          <InfoRow label="Speicherort" value={status?.mediaPath ?? 'media'} />
-          <InfoRow label="Daten" value={status?.dataPath ?? 'data'} />
-        </dl>
-      </div>
-
-      <div className="space-y-2">
-        <TrustRow icon={<Shield className="h-5 w-5" />} text="Token-Pflicht fuer API, Uploads und Streams." />
-        <TrustRow icon={<Lock className="h-5 w-5" />} text="Dateien bleiben auf diesem Rechner." />
-        <TrustRow icon={<Users className="h-5 w-5" />} text="Fuer private Gruppen im eigenen Netzwerk gebaut." />
-      </div>
-    </motion.section>
-  );
-}
-
-function InfoRow({label, value}: {label: string; value: string}) {
-  return (
-    <div className="flex justify-between gap-4 border-b border-line pb-3 last:border-b-0">
-      <dt className="text-muted">{label}</dt>
-      <dd className="min-w-0 truncate text-right font-bold">{value}</dd>
-    </div>
-  );
-}
-
-function TrustRow({icon, text}: {icon: React.ReactNode; text: string}) {
-  return (
-    <div className="surface-quiet flex items-center gap-3 p-4 text-sm font-bold text-muted">
-      <div className="text-mint">{icon}</div>
-      <p>{text}</p>
-    </div>
-  );
-}
-
-function BottomDock({view, setView, file, isPlaying, queueCount, progress, onToggle, onSkip, onOpenPlayer, shuffle, repeat}: {
-  view: View;
-  setView: (view: View) => void;
-  file: ApiFile | null;
-  isPlaying: boolean;
-  queueCount: number;
-  progress: number;
-  onToggle: () => void;
-  onSkip: (offset: number) => void;
-  onOpenPlayer: () => void;
-  shuffle: boolean;
-  repeat: 'off' | 'all' | 'one';
-}) {
-  return (
-    <footer className="bottom-dock">
-      <div className="dock-container">
-        {file && (
-          <motion.div
-            className="dock-player cursor-pointer"
-            role="button"
-            tabIndex={0}
-            onClick={onOpenPlayer}
-            onKeyDown={(event) => event.key === 'Enter' && onOpenPlayer()}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-          >
-            <div className="relative">
-              <img src={coverUrl(file)} alt="" className="h-14 w-14 rounded-xl object-cover shadow-lg" />
-              <div className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-mint text-night">
-                {isPlaying ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3 fill-current" />}
-              </div>
-            </div>
-            <div className="min-w-0 flex-1 px-2">
-              <p className="truncate text-sm font-bold">{file.title}</p>
-              <p className="truncate text-xs text-muted">{trackMeta(file)}</p>
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-soft">
-                <motion.div
-                  className="h-full rounded-full bg-gradient-to-r from-mint to-cyan-400"
-                  style={{ width: `${progress}%` }}
-                  initial={{ width: 0 }}
-                  animate={{ width: `${progress}%` }}
-                  transition={{ duration: 0.3 }}
-                />
-              </div>
-            </div>
-            <div className="flex items-center gap-1">
-              {shuffle && <Shuffle className="h-3 w-3 text-mint" />}
-              {repeat !== 'off' && <Repeat className={`h-3 w-3 ${repeat === 'one' ? 'text-mint' : 'text-muted'}`} />}
-              <button onClick={(event) => { event.stopPropagation(); onSkip(-1); }} className="mini-button" aria-label="Zurueck">
-                <SkipBack className="h-4 w-4" />
-              </button>
-              <button onClick={(event) => { event.stopPropagation(); onToggle(); }} className="mini-button bg-mint text-night" aria-label={isPlaying ? 'Pausieren' : 'Abspielen'}>
-                {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 fill-current" />}
-              </button>
-            </div>
-          </motion.div>
-        )}
-
-        <nav className="dock-nav" aria-label="Hauptnavigation">
-          <NavButton active={view === 'library'} onClick={() => setView('library')} icon={<Home className="h-5 w-5" />} label="Start" />
-          <NavButton active={view === 'discover'} onClick={() => setView('discover')} icon={<Compass className="h-5 w-5" />} label="Entdecken" />
-          <NavButton active={view === 'charts'} onClick={() => setView('charts')} icon={<BarChart3 className="h-5 w-5" />} label="Charts" />
-          <NavButton active={view === 'playlists'} onClick={() => setView('playlists')} icon={<ListMusic className="h-5 w-5" />} label="Playlists" />
-          <NavButton active={view === 'settings'} onClick={() => setView('settings')} icon={<Settings className="h-5 w-5" />} label="Einstell." />
-          <NavButton active={view === 'queue'} onClick={() => setView('queue')} icon={<ListMusic className="h-5 w-5" />} label={`Queue ${queueCount}`} />
-          <NavButton active={view === 'albums'} onClick={() => setView('albums')} icon={<Disc className="h-5 w-5" />} label="Alben" />
-          <NavButton active={view === 'artists'} onClick={() => setView('artists')} icon={<User className="h-5 w-5" />} label="Kuenstler" />
-          <NavButton active={view === 'share'} onClick={() => setView('share')} icon={<Share2 className="h-5 w-5" />} label="Teilen" />
-          <NavButton active={view === 'public'} onClick={() => setView('public')} icon={<Globe className="h-5 w-5" />} label="Profil" />
-        </nav>
-      </div>
-    </footer>
-  );
-}
-
-function trackMeta(file: ApiFile) {
-  const artist = file.artist?.trim();
-  const album = file.album?.trim();
-  const type = file.kind === 'audio' ? 'Audio' : 'Video';
-  const duration = file.durationLabel ? `${file.durationLabel} - ` : '';
-
-  if (artist && album) return `${artist} - ${album} - ${duration}${file.sizeLabel}`;
-  if (artist) return `${artist} - ${duration}${file.sizeLabel}`;
-  return `${type} - ${duration}${file.sizeLabel}`;
-}
-
-function FullscreenPlayer({file, isPlaying, currentTime, duration, progress, onClose, onToggle, onSkip, onSeek}: {
-  file: ApiFile | null;
-  isPlaying: boolean;
-  currentTime: number;
-  duration: number;
-  progress: number;
-  onClose: () => void;
-  onToggle: () => void;
-  onSkip: (offset: number) => void;
-  onSeek: (value: number) => void;
-}) {
-  return (
-    <motion.section
-      className="player-sheet"
-      initial={{opacity: 0, y: 80}}
-      animate={{opacity: 1, y: 0}}
-      exit={{opacity: 0, y: 80}}
-      transition={{type: 'spring', damping: 28, stiffness: 260}}
-    >
-      <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col px-5 pb-8 pt-4 relative">
-        <div className="absolute inset-0 -z-10 overflow-hidden rounded-3xl pointer-events-none">
-          <motion.img
-            src={coverUrl(file)}
-            className="h-full w-full object-cover blur-3xl scale-110 opacity-40"
-            animate={{ scale: [1.1, 1.2, 1.1] }}
-            transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
-          />
-          <div className="absolute inset-0 bg-gradient-to-b from-night/20 via-night/60 to-night" />
-        </div>
-
-        <div className="mb-5 flex items-center justify-between relative z-10">
-          <button onClick={onClose} className="icon-button bg-soft/50" aria-label="Player schliessen">
-            <X className="h-5 w-5" />
-          </button>
-          <p className="text-sm font-black text-muted uppercase tracking-widest">Jetzt abspielen</p>
-          <div className="h-11 w-11" />
-        </div>
-
-        <div className="flex flex-1 flex-col justify-center relative z-10">
-          <div className="cover-wrap mx-auto w-full max-w-sm shadow-2xl transition-transform duration-500 hover:scale-[1.02]">
-            <img src={coverUrl(file)} alt="" className="cover-art" />
-          </div>
-
-          <div className="mt-12 text-center">
-            <p className="mb-2 text-sm font-bold text-mint uppercase tracking-wider">{file?.artist || 'Privater Raum'}</p>
-            <h2 className="line-clamp-2 text-5xl font-black leading-tight tracking-tight">{file?.title ?? 'Kein Track ausgewaehlt'}</h2>
-            <p className="mt-4 truncate text-lg font-medium text-muted opacity-80">{file ? trackMeta(file) : 'Waehle Musik aus deiner Bibliothek.'}</p>
-          </div>
-
-          <div className="mt-12 max-w-md mx-auto w-full">
-            <input
-              type="range"
-              min="0"
-              max="100"
-              value={Number.isFinite(progress) ? progress : 0}
-              onChange={(event) => onSeek(Number(event.target.value))}
-              className="seek-slider"
-              aria-label="Position"
-            />
-            <div className="mt-3 flex justify-between text-xs font-bold text-muted px-1">
-              <span>{formatTime(currentTime)}</span>
-              <span>{formatTime(duration)}</span>
-            </div>
-          </div>
-
-          <div className="mt-12 flex items-center justify-center gap-8">
-            <button onClick={() => onSkip(-1)} className="round-button h-16 w-16 bg-soft/40 backdrop-blur-md" aria-label="Zurueck">
-              <SkipBack className="h-7 w-7" />
-            </button>
-            <button onClick={onToggle} disabled={!file} className="play-button h-24 w-24 shadow-2xl scale-110" aria-label={isPlaying ? 'Pausieren' : 'Abspielen'}>
-              {isPlaying ? <Pause className="h-12 w-12" /> : <Play className="h-12 w-12 fill-current" />}
-            </button>
-            <button onClick={() => onSkip(1)} className="round-button h-16 w-16 bg-soft/40 backdrop-blur-md" aria-label="Weiter">
-              <SkipForward className="h-7 w-7" />
-            </button>
-          </div>
-        </div>
-      </div>
-    </motion.section>
-  );
-}
-
-function NavButton({active, onClick, icon, label}: {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  label: string;
-}) {
-  return (
-    <button onClick={onClick} className={`dock-nav-button ${active ? 'is-active' : ''}`}>
-      {icon}
-      <span>{label}</span>
-    </button>
-  );
-}
