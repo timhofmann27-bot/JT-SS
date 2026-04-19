@@ -137,7 +137,10 @@ const authLimiter = rateLimit({
   message: { error: 'too many attempts, try again later' },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.ip || 'unknown',
+  keyGenerator: (req) => {
+    const ip = rateLimit.ipKeyGenerator(req);
+    return ip || 'unknown';
+  },
 });
 
 const generalLimiter = rateLimit({
