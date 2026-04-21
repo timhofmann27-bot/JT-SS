@@ -7,6 +7,7 @@ import {
   Plus,
 } from 'lucide-react';
 import type { ApiFile, Album, Artist, Playlist } from '../types';
+import { Dialog, ImmersiveInput, ImmersiveButton } from '../components/ui';
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? '';
 
@@ -36,6 +37,7 @@ interface LibraryViewProps {
   onAlbumSelect: (a: Album) => void;
   onArtistSelect: (a: Artist) => void;
   onPlaylistSelect: (p: Playlist) => void;
+  onCreatePlaylist: (name: string) => void;
 }
 
 export default function LibraryView({
@@ -54,7 +56,19 @@ export default function LibraryView({
   onAlbumSelect,
   onArtistSelect,
   onPlaylistSelect,
+  onCreatePlaylist,
 }: LibraryViewProps) {
+  const [isCreating, setIsCreating] = React.useState(false);
+  const [newName, setNewName] = React.useState('');
+
+  const handleCreate = () => {
+    if (newName.trim()) {
+      onCreatePlaylist(newName.trim());
+      setNewName('');
+      setIsCreating(false);
+    }
+  };
+
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="library-view">
       <div className="library-header">
@@ -64,7 +78,7 @@ export default function LibraryView({
       <div className="library-filter">
         {(['playlists', 'artists', 'albums'] as const).map((f) => (
           <button key={f} className={`library-filter-btn ${filter === f ? 'is-active' : ''}`} onClick={() => setFilter(f)}>
-            {f === 'playlists' ? 'Playlists' : f === 'artists' ? 'Kuenstler' : 'Alben'}
+            {f === 'playlists' ? 'Playlists' : f === 'artists' ? 'Künstler' : 'Alben'}
           </button>
         ))}
       </div>
@@ -88,7 +102,7 @@ export default function LibraryView({
                 <p className="home-card-subtitle">{playlist.trackIds.length} Titel</p>
               </div>
             ))}
-            <div className="library-create-card" onClick={onOpenUpload}>
+            <div className="library-create-card" onClick={() => setIsCreating(true)}>
               <div className="library-create-icon">
                 <Plus className="h-8 w-8" />
               </div>
@@ -96,6 +110,29 @@ export default function LibraryView({
             </div>
           </div>
         )}
+
+        <Dialog
+          isOpen={isCreating}
+          onClose={() => setIsCreating(false)}
+          title="Playlist erstellen"
+          footer={
+            <ImmersiveButton onClick={handleCreate}>
+              Erstellen
+            </ImmersiveButton>
+          }
+        >
+          <ImmersiveInput 
+            label="Name der Playlist"
+            type="text"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="z.B. Sommergefühle"
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleCreate();
+            }}
+          />
+        </Dialog>
 
         {filter === 'artists' && (
           <div className="library-grid">
@@ -110,7 +147,7 @@ export default function LibraryView({
                   </div>
                 </div>
                 <p className="home-card-title text-center">{artist.name}</p>
-                <p className="home-card-subtitle text-center">Kuenstler</p>
+                <p className="home-card-subtitle text-center">Künstler</p>
               </div>
             ))}
           </div>

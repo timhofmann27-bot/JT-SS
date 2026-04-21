@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   ChevronDown,
+  Disc3,
   Heart,
   ListMusic,
   ListOrdered,
@@ -66,161 +67,136 @@ export function FullscreenPlayer({
   onOpenQueue: () => void;
 }) {
   const [showVolume, setShowVolume] = useState(false);
-  const hue = file ? hueFromString(file.album || file.artist || file.title) : '#1DB954';
+  const hue = file ? hueFromString(file.album || file.artist || file.title) : 'var(--color-brand)';
 
   return (
     <motion.div
-      className="spotify-player"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.3 }}
+      className="full-player"
+      initial={{ y: '100%' }}
+      animate={{ y: 0 }}
+      exit={{ y: '100%' }}
+      transition={{ type: 'spring', damping: 25, stiffness: 200 }}
     >
-      <div className="spotify-player-bg" style={{ background: `radial-gradient(circle at 50% 30%, ${hue}40 0%, #121212 70%)` }} />
+      <div className="full-player-bg" style={{ background: `radial-gradient(circle at 50% 30%, ${hue}30 0%, #000 80%)` }} />
 
-      <header className="spotify-player-header">
-        <button onClick={onClose} className="spotify-player-close" aria-label="Schliessen">
-          <ChevronDown className="h-6 w-6" />
+      <header className="full-player-header">
+        <button onClick={onClose} className="full-player-close" aria-label="Schliessen">
+          <ChevronDown className="h-8 w-8" />
         </button>
 
-        <div className="spotify-player-header-center">
-          <span className="spotify-player-header-label">Wird abgespielt</span>
+        <div className="full-player-header-center">
+          <span className="full-player-header-label">Wird abgespielt</span>
         </div>
 
-        <button onClick={onOpenQueue} className="spotify-player-queue-btn" aria-label="Warteschlange">
-          <ListOrdered className="h-5 w-5" />
+        <button onClick={onOpenQueue} className="full-player-queue-btn" aria-label="Warteschlange">
+          <ListOrdered className="h-6 w-6" />
         </button>
       </header>
 
-      <div className="spotify-player-body">
-        <div className="spotify-player-artwork">
+      <div className="full-player-body">
+        <div className="full-player-artwork">
           <motion.div
             key={file?.id}
-            initial={{ scale: 0.95, opacity: 0 }}
+            initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            transition={{ duration: 0.4 }}
-            className="spotify-player-cover"
+            transition={{ type: 'spring', damping: 20 }}
+            className="full-player-cover"
           >
             {file ? (
               <img
                 src={coverUrl(file, token)}
                 alt=""
-                className="spotify-player-cover-img"
+                className="full-player-cover-img"
               />
             ) : (
-              <div className="spotify-player-cover-placeholder">
-                <ListMusic className="h-20 w-20 text-[#282828]" />
+              <div className="full-player-cover-placeholder">
+                <Disc3 className="h-24 w-24 text-white/10" />
               </div>
             )}
           </motion.div>
         </div>
 
-        <div className="spotify-player-info">
-          <div className="spotify-player-track">
-            <h1 className="spotify-player-title line-clamp-2">{file?.title ?? 'Kein Titel'}</h1>
-            <p className="spotify-player-artist">{file ? trackArtist(file) : 'Waehle einen Titel'}</p>
+        <div className="full-player-info">
+          <div className="full-player-track">
+            <h1 className="full-player-title">{file?.title ?? 'Kein Titel'}</h1>
+            <p className="full-player-artist">{file ? trackArtist(file) : 'Wähle einen Titel'}</p>
           </div>
 
-          <div className="spotify-player-actions">
+          <div className="full-player-actions">
             <button
               onClick={onToggleLike}
-              className={`spotify-player-like ${liked ? 'is-active' : ''}`}
-              aria-label={liked ? 'Gefaellt mir entfernen' : 'Gefaellt mir'}
+              className={`full-player-like ${liked ? 'is-active' : ''}`}
             >
-              <Heart className={`h-7 w-7 ${liked ? 'fill-current' : ''}`} />
-            </button>
-            <button className="spotify-player-more" aria-label="Mehr">
-              <MoreHorizontal className="h-6 w-6" />
+              <Heart className={`h-8 w-8 ${liked ? 'fill-current' : ''}`} />
             </button>
           </div>
         </div>
 
-        <div className="spotify-player-seek">
-          <input
-            type="range"
-            min={0}
-            max={100}
-            step={0.1}
-            value={Number.isFinite(progress) ? progress : 0}
-            onChange={(e) => onSeek(Number(e.target.value))}
-            className="spotify-seek-slider"
-            style={{ ['--seek' as string]: `${progress}%` } as React.CSSProperties}
-            aria-label="Position"
-          />
-          <div className="spotify-player-time-row">
-            <span className="spotify-player-time">{formatTime(currentTime)}</span>
-            <span className="spotify-player-time">{formatTime(duration)}</span>
+        <div className="full-player-seek">
+          <div className="full-seek-bar-container" onClick={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const percent = ((e.clientX - rect.left) / rect.width) * 100;
+            onSeek(percent);
+          }}>
+            <div className="full-seek-bar">
+              <div className="full-seek-fill" style={{ width: `${progress}%` }} />
+            </div>
+          </div>
+          <div className="full-player-time-row">
+            <span className="full-player-time retro-mono">{formatTime(currentTime)}</span>
+            <span className="full-player-time retro-mono">{formatTime(duration)}</span>
           </div>
         </div>
 
-        <div className="spotify-player-controls">
-          <button
-            onClick={onShuffle}
-            className={`spotify-ctrl-btn ${shuffle ? 'is-active' : ''}`}
-            aria-label="Zufallswiedergabe"
-          >
-            <Shuffle className="h-5 w-5" />
+        <div className="full-player-controls">
+          <button onClick={onShuffle} className={`ctrl-btn-small ${shuffle ? 'is-active' : ''}`}>
+            <Shuffle className="h-6 w-6" />
           </button>
 
-          <button onClick={() => onSkip(-1)} className="spotify-ctrl-btn" aria-label="Zurueck">
-            <SkipBack className="h-6 w-6 fill-current" />
+          <button onClick={() => onSkip(-1)} className="ctrl-btn-skip">
+            <SkipBack className="h-8 w-8 fill-current" />
           </button>
 
-          <button
-            onClick={onToggle}
-            disabled={!file}
-            className="spotify-ctrl-play"
-            aria-label={isPlaying ? 'Pause' : 'Abspielen'}
-          >
+          <button onClick={onToggle} disabled={!file} className="ctrl-btn-play">
             {isPlaying ? (
-              <Pause className="h-8 w-8 fill-current" />
+              <Pause className="h-10 w-10 fill-current" />
             ) : (
-              <Play className="h-8 w-8 fill-current translate-x-0.5" />
+              <Play className="h-10 w-10 fill-current translate-x-1" />
             )}
           </button>
 
-          <button onClick={() => onSkip(1)} className="spotify-ctrl-btn" aria-label="Weiter">
-            <SkipForward className="h-6 w-6 fill-current" />
+          <button onClick={() => onSkip(1)} className="ctrl-btn-skip">
+            <SkipForward className="h-8 w-8 fill-current" />
           </button>
 
-          <button
-            onClick={onRepeat}
-            className={`spotify-ctrl-btn ${repeat !== 'off' ? 'is-active' : ''}`}
-            aria-label="Wiederholen"
-          >
-            {repeat === 'one' ? <Repeat1 className="h-5 w-5" /> : <Repeat className="h-5 w-5" />}
+          <button onClick={onRepeat} className={`ctrl-btn-small ${repeat !== 'off' ? 'is-active' : ''}`}>
+            {repeat === 'one' ? <Repeat1 className="h-6 w-6" /> : <Repeat className="h-6 w-6" />}
           </button>
         </div>
 
-        <div className="spotify-player-footer">
-          <button
-            onClick={() => setShowVolume(!showVolume)}
-            className="spotify-ctrl-btn"
-            aria-label="Lautstaerke"
-          >
-            {volume === 0 ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+        <div className="full-player-footer">
+          <button className="ctrl-btn-small" onClick={onShare}>
+            <Share2 className="h-6 w-6" />
+          </button>
+          
+          <div className="flex-1" />
+
+          <button className="ctrl-btn-small" onClick={() => setShowVolume(!showVolume)}>
+            {volume === 0 ? <VolumeX className="h-6 w-6" /> : <Volume2 className="h-6 w-6" />}
           </button>
 
           {showVolume && (
-            <div className="spotify-volume-popover">
-              <input
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="absolute bottom-20 right-8 w-40 p-4 bg-black/80 backdrop-blur-xl rounded-2xl border border-white/10">
+               <input
                 type="range"
                 min={0}
                 max={100}
                 value={volume * 100}
                 onChange={(e) => onVolume(Number(e.target.value) / 100)}
-                className="spotify-seek-slider"
-                style={{ ['--seek' as string]: `${volume * 100}%` } as React.CSSProperties}
-                aria-label="Lautstaerke"
+                className="w-full accent-brand"
               />
-            </div>
+            </motion.div>
           )}
-
-          <div className="spotify-player-footer-right">
-            <button className="spotify-ctrl-btn" aria-label="Teilen">
-              <Share2 className="h-5 w-5" />
-            </button>
-          </div>
         </div>
       </div>
     </motion.div>
@@ -298,7 +274,7 @@ export function QueueSheet({
 
               {queue.length > 0 && (
                 <div className="queue-section">
-                  <p className="queue-section-title">Als naechstes</p>
+                  <p className="queue-section-title">Als nächstes</p>
                   <div className="queue-list">
                     {queue.map((item) => (
                       <div key={item.id} className="queue-item">
@@ -329,7 +305,7 @@ export function QueueSheet({
                 <div className="queue-empty">
                   <ListMusic className="h-12 w-12 text-[#6a6a6a] mb-3" />
                   <p className="text-[#b3b3b3] font-semibold">Warteschlange ist leer</p>
-                  <p className="text-[#6a6a6a] text-sm mt-1">Fuege Titel hinzu, um sie als naechstes abzuspielen.</p>
+                  <p className="text-[#6a6a6a] text-sm mt-1">Füge Titel hinzu, um sie als nächstes abzuspielen.</p>
                 </div>
               )}
             </div>

@@ -35,11 +35,12 @@ import {
   Crown,
   Users,
   AlertCircle,
+  ShieldCheck,
 } from 'lucide-react';
 
 const coverUrl = (file: ApiFile | undefined) => {
   if (!file) return '/icon.svg';
-  return file.hasArtwork ? `/api/art/${file.id}` : '/icon.svg';
+  return file.hasArtwork ? `/api/cover/${file.id}` : '/icon.svg';
 };
 
 const formatTime = (seconds: number) => {
@@ -73,7 +74,7 @@ export function AlbumsView({ albums, onPlayAlbum, onSelectAlbum }: {
         <div className="empty-state">
           <Disc className="h-11 w-11 text-mint" />
           <h3 className="text-xl font-black">Keine Alben</h3>
-          <p className="max-w-sm text-sm leading-6 text-muted">Fuege Musik mit Album-Informationen hinzu.</p>
+          <p className="max-w-sm text-sm leading-6 text-muted">Füge Musik mit Album-Informationen hinzu.</p>
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
@@ -111,15 +112,15 @@ export function ArtistsView({ artists, onPlayArtist, onSelectArtist }: {
   return (
     <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-black">Kuenstler</h2>
-        <p className="text-sm font-bold text-muted">{artists.length} Kuenstler</p>
+        <h2 className="text-2xl font-black">Künstler</h2>
+        <p className="text-sm font-bold text-muted">{artists.length} Künstler</p>
       </div>
 
       {artists.length === 0 ? (
         <div className="empty-state">
           <User className="h-11 w-11 text-mint" />
-          <h3 className="text-xl font-black">Keine Kuenstler</h3>
-          <p className="max-w-sm text-sm leading-6 text-muted">Fuege Musik mit Kuenstler-Informationen hinzu.</p>
+          <h3 className="text-xl font-black">Keine Künstler</h3>
+          <p className="max-w-sm text-sm leading-6 text-muted">Füge Musik mit Künstler-Informationen hinzu.</p>
         </div>
       ) : (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
@@ -243,7 +244,7 @@ export function DiscoverView({ files, likedIds, onPlay, onLike }: {
       <div className="surface p-5">
         <div className="flex items-center gap-2 mb-4">
           <Flame className="h-5 w-5 text-mint" />
-          <h2 className="text-xl font-black">Fuer dich</h2>
+          <h2 className="text-xl font-black">Für dich</h2>
         </div>
         <p className="text-sm text-muted">Basierend auf deinem Geschmack</p>
       </div>
@@ -312,7 +313,7 @@ export function ChartsView({ charts, onPlay }: {
         <div className="empty-state">
           <TrendingUp className="h-11 w-11 text-mint" />
           <h3 className="text-xl font-black">Keine Charts</h3>
-          <p className="max-w-sm text-sm leading-6 text-muted">Fuege Musik hinzu um Charts zu sehen.</p>
+          <p className="max-w-sm text-sm leading-6 text-muted">Füge Musik hinzu um Charts zu sehen.</p>
         </div>
       ) : (
         <div className="surface p-4">
@@ -364,7 +365,7 @@ export function SettingsView({ settings, sleepTimer, onUpdateSettings, onStartSl
 
         <div className="space-y-3">
           <label className="block">
-            <p className="text-sm font-bold text-muted mb-2">Qualitaet</p>
+            <p className="text-sm font-bold text-muted mb-2">Qualität</p>
             <select
               value={settings.audioQuality}
               onChange={(e) => onUpdateSettings({ audioQuality: e.target.value as UserSettings['audioQuality'] })}
@@ -487,7 +488,7 @@ export function ShareView({ userProfile, shareCode, files, onGenerateCode, onTog
             <p className="text-muted mb-4">Erstelle einen öffentlichen Link, damit andere deine Musik sehen und hören können.</p>
             <button onClick={onGenerateCode} className="primary-button">
               <Globe className="h-5 w-5 mr-2" />
-              Oeffentliches Profil erstellen
+              Öffentliches Profil erstellen
             </button>
           </div>
         ) : (
@@ -584,14 +585,14 @@ export function PublicRoomsView({ sharedRooms, files, onPlay }: {
     <motion.section initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="space-y-4">
       <div className="flex items-center gap-2">
         <Globe className="h-5 w-5 text-mint" />
-        <h2 className="text-2xl font-black">Oeffentliche Profile</h2>
+        <h2 className="text-2xl font-black">Öffentliche Profile</h2>
       </div>
 
       {sharedRooms.length === 0 ? (
         <div className="empty-state">
           <Globe className="h-11 w-11 text-mint" />
-          <h3 className="text-xl font-black">Keine oeffentlichen Profile</h3>
-          <p className="max-w-sm text-sm leading-6 text-muted">Erstelle zuerst dein eigenes oeffentliches Profil um gefunden zu werden.</p>
+          <h3 className="text-xl font-black">Keine öffentlichen Profile</h3>
+          <p className="max-w-sm text-sm leading-6 text-muted">Erstelle zuerst dein eigenes öffentliches Profil um gefunden zu werden.</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -626,66 +627,130 @@ export function PublicRoomsView({ sharedRooms, files, onPlay }: {
 }
 
 export function LoginView({ onLogin, error }: {
-  onLogin: (username: string, password: string) => void;
+  onLogin: (username: string, password: string, mfaToken?: string) => void;
   error: string;
 }) {
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
+  const [mfaToken, setMfaToken] = React.useState('');
+  const [showMfa, setShowMfa] = React.useState(false);
+
+  React.useEffect(() => {
+    if (error === 'MFA_REQUIRED') {
+      setShowMfa(true);
+    }
+  }, [error]);
 
   return (
-    <main className="app-shell flex min-h-screen items-center justify-center px-4 py-8">
-      <motion.section initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md">
-        <div className="mb-6 flex items-center gap-3">
-          <div className="brand-mark">
-            <Music className="h-7 w-7" />
+    <main className="flex min-h-[100dvh] flex-col bg-[#111111] text-white font-sans sm:justify-center">
+      {/* Header */}
+      <header className="flex w-full items-center justify-between border-b border-white/5 px-4 py-4 sm:hidden">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#FF7B00]">
+            <Music className="h-5 w-5 text-black" />
           </div>
           <div>
-            <p className="text-sm font-bold text-mint">StreamSync</p>
-            <h1 className="text-2xl font-black leading-tight">Anmelden</h1>
+            <h1 className="text-xl tracking-wide" style={{fontFamily: 'Playfair Display', fontStyle: 'italic'}}>
+              <span className="font-semibold not-italic">Stream</span>Sync
+            </h1>
+            <p className="text-[10px] uppercase tracking-[0.2em] text-white/50" style={{fontFamily: 'Inter'}}>Audio Plattform</p>
           </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <motion.section 
+        initial={{ opacity: 0, y: 18 }} 
+        animate={{ opacity: 1, y: 0 }} 
+        className="flex w-full flex-1 flex-col px-4 py-8 sm:mx-auto sm:max-w-md sm:justify-center"
+      >
+        <div className="mb-10 sm:mt-4">
+          <div className="hidden sm:flex items-center gap-3 mb-8">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#FF7B00]">
+              <Music className="h-6 w-6 text-black" />
+            </div>
+            <div>
+              <h1 className="text-2xl tracking-wide" style={{fontFamily: 'Playfair Display', fontStyle: 'italic'}}>
+                <span className="font-semibold not-italic">Stream</span>Sync
+              </h1>
+              <p className="text-xs uppercase tracking-[0.2em] text-white/50" style={{fontFamily: 'Inter'}}>Audio Plattform</p>
+            </div>
+          </div>
+          
+          <span className="mb-4 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#FF7B00] opacity-90">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#FF7B00]"></span>
+            Willkommen zurück
+          </span>
+          <h2 className="mb-4 text-[2.5rem] leading-[1.1] font-semibold tracking-tight" style={{fontFamily: 'Inter'}}>
+            Melde dich <span style={{fontFamily: 'Playfair Display', fontStyle: 'italic', fontWeight: 400}} className="text-white/70">an</span>
+          </h2>
+          <p className="text-lg font-medium leading-relaxed text-white/60">
+            Melde dich an, um fortzufahren und deine persönliche Musikbibliothek zu genießen.
+          </p>
         </div>
 
         <form
-          onSubmit={(e) => { e.preventDefault(); onLogin(username, password); }}
-          className="surface p-5"
+          onSubmit={(e) => { e.preventDefault(); onLogin(username, password, showMfa ? mfaToken : undefined); }}
+          className="flex flex-col gap-5 rounded-[32px] bg-[#1A1A1A] p-6 shadow-2xl border border-white/5"
         >
-          <img src="/icon.svg" alt="" className="mb-5 h-20 w-20 rounded-lg object-cover" />
-          <h2 className="text-2xl font-black leading-tight">Willkommen zurueck</h2>
-          <p className="mt-2 text-sm leading-6 text-muted">Melde dich an um fortzufahren.</p>
+          {!showMfa ? (
+            <>
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-white/60" htmlFor="username">Benutzername</label>
+                <input
+                  id="username"
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  autoFocus
+                  className="w-full rounded-2xl bg-[#262629] px-4 py-4 text-base text-white placeholder-white/30 transition-shadow focus:outline-none focus:ring-2 focus:ring-[#FF7B00]"
+                  placeholder="Geben Sie Ihren Namen ein"
+                />
+              </div>
 
-          <label className="mb-2 mt-6 block text-sm font-bold text-muted" htmlFor="username">Benutzername</label>
-          <input
-            id="username"
-            type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            autoFocus
-            className="touch-input"
-            placeholder="Benutzername"
-          />
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-white/60" htmlFor="password">Passwort</label>
+                <div className="relative">
+                  <Lock className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-white/30" />
+                  <input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full rounded-2xl bg-[#262629] pl-12 pr-4 py-4 text-base text-white placeholder-white/30 transition-shadow focus:outline-none focus:ring-2 focus:ring-[#FF7B00]"
+                    placeholder="Passwort eingeben"
+                  />
+                </div>
+              </div>
+            </>
+          ) : (
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-white/60" htmlFor="mfaToken">2FA Code</label>
+              <div className="relative">
+                <ShieldCheck className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#FF7B00]" />
+                <input
+                  id="mfaToken"
+                  type="text"
+                  value={mfaToken}
+                  onChange={(e) => setMfaToken(e.target.value)}
+                  autoFocus
+                  className="w-full rounded-2xl bg-[#262629] pl-12 pr-4 py-4 text-xl font-bold tracking-[0.4em] text-white placeholder-white/10 transition-shadow focus:outline-none focus:ring-2 focus:ring-[#FF7B00] text-center"
+                  placeholder="000000"
+                />
+              </div>
+              <p className="mt-3 text-xs text-center text-white/40">Geben Sie den Code aus Ihrer Authenticator-App ein.</p>
+            </div>
+          )}
 
-          <label className="mb-2 mt-4 block text-sm font-bold text-muted" htmlFor="password">Passwort</label>
-          <div className="relative">
-            <Lock className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted" />
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="touch-input pl-12"
-              placeholder="Passwort"
-            />
-          </div>
-
-          {error && (
-            <p className="mt-3 flex items-center gap-2 text-sm text-red">
+          {error && error !== 'MFA_REQUIRED' && (
+            <p className="flex items-center gap-2 rounded-xl bg-[#EF4444]/10 p-3 text-sm font-medium text-[#EF4444]">
               <AlertCircle className="h-4 w-4 shrink-0" />
               {error}
             </p>
           )}
 
-          <button className="primary-button mt-5 w-full">
-            Anmelden
+          <button className="mt-2 flex w-full items-center justify-center gap-2 rounded-full bg-[#FF7B00] py-4 text-sm font-bold uppercase tracking-widest text-[#111111] transition-transform active:scale-[0.98] hover:bg-[#FF7B00]/90">
+            {showMfa ? 'Verifizieren' : 'Anmelden'}
           </button>
         </form>
       </motion.section>
@@ -703,68 +768,128 @@ export function RegisterView({ onRegister, error, inviteCode = '' }: {
   const [code, setCode] = React.useState(inviteCode);
 
   return (
-    <main className="app-shell flex min-h-screen items-center justify-center px-4 py-8">
-      <motion.section initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-md">
-        <div className="mb-6 flex items-center gap-3">
-          <div className="brand-mark">
-            <Music className="h-7 w-7" />
+    <main className="flex min-h-[100dvh] flex-col bg-[#111111] text-white font-sans sm:justify-center">
+      {/* Header */}
+      <header className="flex w-full items-center justify-between border-b border-white/5 px-4 py-4 sm:hidden">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#FF7B00]">
+            <Music className="h-5 w-5 text-black" />
           </div>
           <div>
-            <p className="text-sm font-bold text-mint">StreamSync</p>
-            <h1 className="text-2xl font-black leading-tight">Registrieren</h1>
+            <h1 className="text-xl tracking-wide" style={{fontFamily: 'Playfair Display', fontStyle: 'italic'}}>
+              <span className="font-semibold not-italic">Stream</span>Sync
+            </h1>
+            <p className="text-[10px] uppercase tracking-[0.2em] text-white/50" style={{fontFamily: 'Inter'}}>Audio Plattform</p>
           </div>
+        </div>
+      </header>
+
+      <motion.section 
+        initial={{ opacity: 0, y: 18 }} 
+        animate={{ opacity: 1, y: 0 }} 
+        className="flex w-full flex-1 flex-col px-4 py-8 sm:mx-auto sm:max-w-md sm:justify-center"
+      >
+        <div className="mb-10 sm:mt-4">
+          <div className="hidden sm:flex items-center gap-3 mb-8">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#FF7B00]">
+              <Music className="h-6 w-6 text-black" />
+            </div>
+            <div>
+              <h1 className="text-2xl tracking-wide" style={{fontFamily: 'Playfair Display', fontStyle: 'italic'}}>
+                <span className="font-semibold not-italic">Stream</span>Sync
+              </h1>
+              <p className="text-xs uppercase tracking-[0.2em] text-white/50" style={{fontFamily: 'Inter'}}>Audio Plattform</p>
+            </div>
+          </div>
+          
+          <span className="mb-4 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#FF7B00] opacity-90">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#FF7B00]"></span>
+            Setup
+          </span>
+          <h2 className="mb-4 text-[2.5rem] leading-[1.1] font-semibold tracking-tight" style={{fontFamily: 'Inter'}}>
+            Konto <span style={{fontFamily: 'Playfair Display', fontStyle: 'italic', fontWeight: 400}} className="text-white/70">erstellen</span>
+          </h2>
+          <p className="text-lg font-medium leading-relaxed text-white/60">
+            Registriere dich mit einem gültigen Einladungscode für die Streaming Plattform.
+          </p>
         </div>
 
         <form
           onSubmit={(e) => { e.preventDefault(); onRegister(username, password, code); }}
-          className="surface p-5"
+          className="flex flex-col gap-5 rounded-[32px] bg-[#1A1A1A] p-6 shadow-2xl border border-white/5"
         >
-          <img src="/icon.svg" alt="" className="mb-5 h-20 w-20 rounded-lg object-cover" />
-          <h2 className="text-2xl font-black leading-tight">Konto erstellen</h2>
-          <p className="mt-2 text-sm leading-6 text-muted">Du brauchst einen Einladungscode.</p>
-
-          <label className="mb-2 mt-6 block text-sm font-bold text-muted" htmlFor="reg-username">Benutzername</label>
-          <input
-            id="reg-username"
-            type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            autoFocus
-            className="touch-input"
-            placeholder="Waehle einen Namen"
-          />
-
-          <label className="mb-2 mt-4 block text-sm font-bold text-muted" htmlFor="reg-password">Passwort</label>
-          <input
-            id="reg-password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="touch-input"
-            placeholder="Passwort"
-          />
-
-          <label className="mb-2 mt-4 block text-sm font-bold text-muted" htmlFor="invite">Einladungscode</label>
-          <div className="relative">
-            <Mail className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted" />
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-white/60" htmlFor="reg-username">Benutzername</label>
             <input
-              id="invite"
+              id="reg-username"
               type="text"
-              value={code}
-              onChange={(e) => setCode(e.target.value.toUpperCase())}
-              className="touch-input pl-12"
-              placeholder="EINLADUNGSCODE"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoFocus
+              className="w-full rounded-2xl bg-[#262629] px-4 py-4 text-base text-white placeholder-white/30 transition-shadow focus:outline-none focus:ring-2 focus:ring-[#FF7B00]"
+              placeholder="Gewünschter Name"
             />
           </div>
 
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-white/60" htmlFor="reg-password">Passwort</label>
+            <input
+              id="reg-password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full rounded-2xl bg-[#262629] px-4 py-4 text-base text-white placeholder-white/30 transition-shadow focus:outline-none focus:ring-2 focus:ring-[#FF7B00]"
+              placeholder="Mindestens 8 Zeichen"
+            />
+            {password.length > 0 && (
+              <div className="mt-2 flex gap-1">
+                {[1, 2, 3, 4, 5].map((idx) => {
+                  const score = (() => {
+                    let s = 0;
+                    if (password.length >= 8) s++;
+                    if (/[A-Z]/.test(password)) s++;
+                    if (/[a-z]/.test(password)) s++;
+                    if (/[0-9]/.test(password)) s++;
+                    if (/[^A-Za-z0-9]/.test(password)) s++;
+                    return s;
+                  })();
+                  return (
+                    <div 
+                      key={idx} 
+                      className={`h-1 flex-1 rounded-full transition-colors ${
+                        idx <= score ? (score <= 2 ? 'bg-red-500' : score <= 4 ? 'bg-yellow-500' : 'bg-green-500') : 'bg-white/10'
+                      }`}
+                    />
+                  );
+                })}
+              </div>
+            )}
+            <p className="mt-1 text-[10px] text-white/40">Vorgabe: Min 8 Zeichen, Groß-/Kleinschreibung, Zahl & Sonderzeichen.</p>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-semibold text-white/60" htmlFor="invite">Einladungscode</label>
+            <div className="relative">
+              <Mail className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-white/30" />
+              <input
+                id="invite"
+                type="text"
+                value={code}
+                onChange={(e) => setCode(e.target.value.toUpperCase())}
+                className="w-full rounded-2xl bg-[#262629] pl-12 pr-4 py-4 text-base font-mono uppercase text-white placeholder-white/30 transition-shadow focus:outline-none focus:ring-2 focus:ring-[#FF7B00]"
+                placeholder="EINLADUNGSCODE"
+              />
+            </div>
+          </div>
+
           {error && (
-            <p className="mt-3 flex items-center gap-2 text-sm text-red">
+            <p className="flex items-center gap-2 rounded-xl bg-[#EF4444]/10 p-3 text-sm font-medium text-[#EF4444] mt-1">
               <AlertCircle className="h-4 w-4 shrink-0" />
               {error}
             </p>
           )}
 
-          <button className="primary-button mt-5 w-full">
+          <button className="mt-2 flex w-full items-center justify-center gap-2 rounded-full bg-[#FF7B00] py-4 text-sm font-bold uppercase tracking-widest text-[#111111] transition-transform active:scale-[0.98] hover:bg-[#FF7B00]/90">
             Registrieren
           </button>
         </form>

@@ -1,5 +1,5 @@
 {
-  "name": "StreamSync",
-  "description": "Private Musik-PWA fuer kleine Gruppen.",
-  "requestFramePermissions": []
+  "name": "JT-MP3 Music",
+  "description": "Private Musik-PWA mit Express-Server und React-Frontend.",
+  "requestFramePermissions": ["screen-wake-lock"]
 }

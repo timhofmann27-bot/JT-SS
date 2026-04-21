@@ -12,6 +12,7 @@ export interface ApiFile {
   durationLabel?: string;
   hasArtwork: boolean;
   modifiedAt: string;
+  externalCoverUrl?: string;
 }
 
 export interface Album {
@@ -125,6 +126,7 @@ export interface AuthUser {
   id: string;
   username: string;
   role: 'admin' | 'member';
+  twoFactorEnabled: boolean;
 }
 
 export interface LoginResponse {
@@ -145,7 +147,7 @@ export interface InviteAPI {
   createdBy: string;
 }
 
-export type NavTab = 'home' | 'search' | 'library' | 'profile';
+export type NavTab = 'home' | 'search' | 'library' | 'profile' | 'liked';
 
 export type View =
   | 'home' | 'search' | 'library' | 'profile'

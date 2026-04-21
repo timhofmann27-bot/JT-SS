@@ -1,6 +1,6 @@
-import React, { useState, useCallback } from 'react';
-import { Heart, Play, Pause, MoreHorizontal, ListPlus, Share2, Trash2, Music2, ChevronRight } from 'lucide-react';
-import { motion } from 'motion/react';
+import React, { useState, useCallback, useEffect, ComponentPropsWithoutRef } from 'react';
+import { Heart, Play, Pause, MoreHorizontal, ListPlus, Share2, Trash2, Music2, ChevronRight, X, Check } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import type { ApiFile } from '../types';
 import { coverUrl } from '../lib/api';
 import { formatTime, trackSubtitle, trackArtist, hueFromString } from '../lib/format';
@@ -72,7 +72,7 @@ function ContextMenu({ x, y, items, onClose, file, onAddToPlaylist }: ContextMen
               {item.icon && <span className="ctx-menu-item-icon">{item.icon}</span>}
               <span className="ctx-menu-item-label">{item.label}</span>
               {item.shortcut && <span className="ctx-menu-item-shortcut">{item.shortcut}</span>}
-              {item.label === 'Zu Playlist hinzufuegen' && (
+              {item.label === 'Zu Playlist hinzufügen' && (
                 <ChevronRight className="h-4 w-4 ml-auto text-muted" />
               )}
             </div>
@@ -113,10 +113,7 @@ function useContextMenu() {
 }
 
 export { ContextMenu, useContextMenu };
-import { motion } from 'motion/react';
-import type { ApiFile } from '../types';
-import { coverUrl } from '../lib/api';
-import { formatTime, trackSubtitle, trackArtist, hueFromString } from '../lib/format';
+export type { ContextMenuItem };
 
 /* ============ Icon Button ============ */
 export function IconButton({
@@ -152,7 +149,7 @@ export function LikeButton({ liked, onToggle, size = 20 }: { liked: boolean; onT
     <button
       type="button"
       onClick={(e) => { e.stopPropagation(); onToggle(); }}
-      aria-label={liked ? 'Aus Lieblingstiteln entfernen' : 'Zu Lieblingstiteln hinzufuegen'}
+      aria-label={liked ? 'Aus Lieblingstiteln entfernen' : 'Zu Lieblingstiteln hinzufügen'}
       className={`btn-icon like-btn ${liked ? 'is-liked' : ''}`}
     >
       <Heart className={`h-5 w-5 ${liked ? 'fill-current' : ''}`} style={{ width: size, height: size }} />
@@ -446,6 +443,131 @@ export function GradientHero({
       </div>
       {children && <div className="mt-4">{children}</div>}
     </div>
+  );
+}
+
+/* ============ Immersive Dialog (Universal create/edit modal) ============ */
+interface DialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+}
+
+export function Dialog({ isOpen, onClose, title, children, footer }: DialogProps) {
+  useEffect(() => {
+    if (isOpen) document.body.style.overflow = 'hidden';
+    else document.body.style.overflow = '';
+    return () => { document.body.style.overflow = ''; };
+  }, [isOpen]);
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <div className="fixed inset-0 z-[1000] flex items-end sm:items-center justify-center">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 bg-black/60 backdrop-blur-md"
+            onClick={onClose}
+          />
+          <motion.div
+            initial={{ y: '100%', opacity: 0, scale: 1 }}
+            animate={{ y: 0, opacity: 1, scale: 1 }}
+            exit={{ y: '100%', opacity: 0 }}
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            className="relative w-full max-w-lg overflow-hidden rounded-t-[32px] sm:rounded-[40px] bg-[#1a1a1a] shadow-2xl border border-white/5 immersive-glow"
+          >
+            <div className="p-8">
+              <header className="flex items-center justify-between mb-8">
+                <motion.h2 
+                  initial={{ x: -20, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  transition={{ delay: 0.1 }}
+                  className="text-2xl font-black tracking-tight"
+                >
+                  {title}
+                </motion.h2>
+                <button onClick={onClose} className="p-3 bg-white/5 rounded-full hover:bg-white/10 transition-colors">
+                  <X className="h-6 w-6 opacity-40 hover:opacity-100 transition-opacity" />
+                </button>
+              </header>
+
+              <motion.div
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ delay: 0.2 }}
+                className="space-y-6"
+              >
+                {children}
+              </motion.div>
+
+              {footer && (
+                <motion.footer
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: 0.3 }}
+                  className="mt-10"
+                >
+                  {footer}
+                </motion.footer>
+              )}
+            </div>
+          </motion.div>
+        </div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+/* ============ Immersive Input ============ */
+interface ImmersiveInputProps extends React.HTMLAttributes<HTMLInputElement> {
+  label?: string;
+  [key: string]: any;
+}
+
+export function ImmersiveInput({ label, ...props }: ImmersiveInputProps) {
+  return (
+    <div className="space-y-2">
+      {label && (
+        <label className="text-[11px] font-black uppercase tracking-[0.2em] text-white/30 ml-4">
+          {label}
+        </label>
+      )}
+      <input
+        {...props}
+        className="w-full h-16 bg-white/5 border border-white/5 rounded-3xl px-6 text-lg font-medium outline-none focus:bg-white/10 focus:border-white/10 focus:ring-2 focus:ring-brand transition-all placeholder-white/20"
+      />
+    </div>
+  );
+}
+
+/* ============ Immersive Button ============ */
+interface ImmersiveButtonProps extends React.HTMLAttributes<HTMLButtonElement> {
+  variant?: 'primary' | 'secondary' | 'danger';
+  isLoading?: boolean;
+  children?: React.ReactNode;
+  [key: string]: any;
+}
+
+export function ImmersiveButton({ variant = 'primary', isLoading, children, ...props }: ImmersiveButtonProps) {
+  const baseClass = "relative h-16 w-full rounded-full font-black text-sm uppercase tracking-widest transition-all active:scale-[0.98] flex items-center justify-center gap-3 overflow-hidden";
+  const variants = {
+    primary: "bg-brand text-black shadow-lg shadow-brand/20 hover:brightness-110",
+    secondary: "bg-white/5 text-white hover:bg-white/10 border border-white/5",
+    danger: "bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20"
+  };
+
+  return (
+    <button className={`${baseClass} ${variants[variant]}`} {...props}>
+      {isLoading ? (
+        <div className="h-5 w-5 border-3 border-current border-t-transparent rounded-full animate-spin" />
+      ) : (
+        children
+      )}
+    </button>
   );
 }
 

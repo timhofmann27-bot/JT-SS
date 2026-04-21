@@ -24,6 +24,7 @@ function getCoverUrl(file: ApiFile | null, token?: string) {
 interface SearchViewProps {
   files: ApiFile[];
   query: string;
+  onQueryChange: (q: string) => void;
   currentFile: ApiFile | null;
   isPlaying: boolean;
   likedIds: Set<string>;
@@ -38,6 +39,7 @@ interface SearchViewProps {
 export default function SearchView({
   files,
   query,
+  onQueryChange,
   currentFile,
   isPlaying,
   likedIds,
@@ -60,7 +62,7 @@ export default function SearchView({
     return (
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="search-view">
         <div className="search-section">
-          <h2 className="search-section-title">Browsen</h2>
+          <h2 className="search-section-title">Erkunden</h2>
           <div className="search-genre-grid">
             {[
               { name: 'Pop', color: '#1DB954' },
@@ -70,7 +72,7 @@ export default function SearchView({
               { name: 'R&B', color: '#F59E0B' },
               { name: 'Jazz', color: '#3B82F6' },
             ].map((genre) => (
-              <div key={genre.name} className="search-genre-tile" style={{ background: genre.color }} onClick={() => {}}>
+              <div key={genre.name} className="search-genre-tile" style={{ background: genre.color }} onClick={() => onQueryChange(genre.name)}>
                 <span className="search-genre-name">{genre.name}</span>
               </div>
             ))}
@@ -101,7 +103,7 @@ export default function SearchView({
 
         {artists.length > 0 && (
           <div className="search-section">
-            <h2 className="search-section-title">Kuenstler</h2>
+            <h2 className="search-section-title">Künstler</h2>
             <div className="home-scroll-row">
               {artists.slice(0, 6).map((artist) => (
                 <div key={artist.id} className="home-card" onClick={() => onArtistSelect(artist)}>
@@ -114,7 +116,7 @@ export default function SearchView({
                     </div>
                   </div>
                   <p className="home-card-title text-center">{artist.name}</p>
-                  <p className="home-card-subtitle text-center">Kuenstler</p>
+                  <p className="home-card-subtitle text-center">Künstler</p>
                 </div>
               ))}
             </div>
@@ -126,6 +128,19 @@ export default function SearchView({
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="search-view">
+      <div className="search-mobile-bar sm:hidden p-4">
+        <div className="main-top-bar-search !max-w-none">
+          <Search className="search-icon" />
+          <input
+            value={query}
+            onChange={(e) => onQueryChange(e.target.value)}
+            className="main-search-input"
+            placeholder="Künstler, Titel, Alben..."
+            autoFocus
+          />
+        </div>
+      </div>
+
       <div className="search-results">
         {files.length === 0 ? (
           <EmptyState icon={<Search className="h-12 w-12" />} title="Keine Ergebnisse" message={`Keine Titel gefunden für "${query}"`} />

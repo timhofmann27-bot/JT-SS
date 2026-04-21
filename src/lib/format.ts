@@ -16,7 +16,7 @@ export function formatDuration(seconds: number): string {
 }
 
 export function trackArtist(file: ApiFile): string {
-  return file.artist?.trim() || 'Unbekannter Kuenstler';
+  return file.artist?.trim() || 'Unbekannter Künstler';
 }
 
 export function trackSubtitle(file: ApiFile): string {

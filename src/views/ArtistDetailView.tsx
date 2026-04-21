@@ -50,7 +50,7 @@ export default function ArtistDetailView({
           <img src={getCoverUrl(artist.topTracks[0])} alt={artist.name} />
         </div>
         <div className="detail-hero-info">
-          <p className="detail-hero-type">Kuenstler</p>
+          <p className="detail-hero-type">Künstler</p>
           <h1 className="detail-hero-title">{artist.name}</h1>
           <p className="detail-hero-meta">{artist.albums.length} Alben • {artist.topTracks.length} Titel</p>
           <div className="detail-hero-actions">

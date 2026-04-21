@@ -73,7 +73,7 @@ export default function PlaylistDetailView({
 
       <div className="detail-content">
         {playlistFiles.length === 0 ? (
-          <EmptyState icon={<ListMusic className="h-12 w-12" />} title="Playlist ist leer" message="Fuege Titel hinzu." />
+          <EmptyState icon={<ListMusic className="h-12 w-12" />} title="Playlist ist leer" message="Füge Titel hinzu." />
         ) : (
           <div className="home-track-list">
             {playlistFiles.map((file, index) => (

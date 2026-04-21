@@ -13,22 +13,29 @@ import {
   Play,
   Clock,
   Music2,
+  User,
 } from 'lucide-react';
 import type { NavTab, ApiFile } from '../types';
-import { coverUrl } from '../lib/api';
-import { trackSubtitle } from '../lib/format';
+import {
+  Dialog,
+  ImmersiveInput,
+  ImmersiveButton,
+  coverUrl,
+  trackSubtitle,
+} from './ui';
 
 interface SidebarProps {
   activeTab: NavTab;
   onTabChange: (tab: NavTab) => void;
   onUpload: () => void;
   playlists: { id: string; name: string }[];
+  onCreatePlaylist: (name: string) => void;
   onPlaylistSelect: (id: string) => void;
   likedCount: number;
   onLikedSongs: () => void;
 }
 
-export function Sidebar({ activeTab, onTabChange, onUpload, playlists, onPlaylistSelect, likedCount, onLikedSongs }: SidebarProps) {
+export function Sidebar({ activeTab, onTabChange, onUpload, playlists, onCreatePlaylist, onPlaylistSelect, likedCount, onLikedSongs }: SidebarProps) {
   const [showCreatePlaylist, setShowCreatePlaylist] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
 
@@ -41,12 +48,9 @@ export function Sidebar({ activeTab, onTabChange, onUpload, playlists, onPlaylis
   return (
     <aside className="sidebar">
       <div className="sidebar-top">
-        <a href="#" className="sidebar-logo" onClick={(e) => { e.preventDefault(); onTabChange('home'); }}>
-          <div className="sidebar-logo-icon">
-            <Disc3 className="h-5 w-5 text-white" />
-          </div>
+        <button className="sidebar-logo" onClick={() => onTabChange('home')}>
           <span className="sidebar-logo-text">JT-MP3</span>
-        </a>
+        </button>
       </div>
 
       <nav className="sidebar-nav">
@@ -71,7 +75,7 @@ export function Sidebar({ activeTab, onTabChange, onUpload, playlists, onPlaylis
 
           <button
             onClick={onLikedSongs}
-            className="sidebar-item w-full"
+            className={`sidebar-item w-full ${activeTab === 'liked' ? 'is-active' : ''}`}
           >
             <div className="sidebar-item-icon w-6 h-6 rounded bg-gradient-to-br from-[#4000BF] to-[#8000FF] flex items-center justify-center">
               <Heart className="h-3.5 w-3.5 text-white" fill="white" />
@@ -84,7 +88,7 @@ export function Sidebar({ activeTab, onTabChange, onUpload, playlists, onPlaylis
             <div className="sidebar-item-icon w-6 h-6 rounded bg-[#5038A0] flex items-center justify-center">
               <Music2 className="h-3.5 w-3.5 text-white" />
             </div>
-            <span>Erstellte playlists</span>
+            <span>Erstellte Playlists</span>
           </button>
 
           <button className="sidebar-item w-full" onClick={() => setShowCreatePlaylist(true)}>
@@ -109,45 +113,40 @@ export function Sidebar({ activeTab, onTabChange, onUpload, playlists, onPlaylis
         </div>
       </nav>
 
-      {showCreatePlaylist && (
-        <div className="sidebar-create-playlist">
-          <input
-            type="text"
-            value={newPlaylistName}
-            onChange={(e) => setNewPlaylistName(e.target.value)}
-            placeholder="Playlist-Name"
-            className="sidebar-input"
-            autoFocus
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && newPlaylistName.trim()) {
-                // Create playlist callback would go here
-                setShowCreatePlaylist(false);
-                setNewPlaylistName('');
-              }
-              if (e.key === 'Escape') {
+      <Dialog
+        isOpen={showCreatePlaylist}
+        onClose={() => setShowCreatePlaylist(false)}
+        title="Neue Playlist"
+        footer={
+          <ImmersiveButton 
+            onClick={() => {
+              if (newPlaylistName.trim()) {
+                onCreatePlaylist(newPlaylistName.trim());
                 setShowCreatePlaylist(false);
                 setNewPlaylistName('');
               }
             }}
-          />
-          <div className="flex gap-2">
-            <button
-              onClick={() => {
-                if (newPlaylistName.trim()) {
-                  setShowCreatePlaylist(false);
-                  setNewPlaylistName('');
-                }
-              }}
-              className="sidebar-btn-primary"
-            >
-              Erstellen
-            </button>
-            <button onClick={() => setShowCreatePlaylist(false)} className="sidebar-btn-secondary">
-              Abbrechen
-            </button>
-          </div>
-        </div>
-      )}
+          >
+            Playlist erstellen
+          </ImmersiveButton>
+        }
+      >
+        <ImmersiveInput 
+          label="Name der Playlist"
+          type="text"
+          value={newPlaylistName}
+          onChange={(e) => setNewPlaylistName(e.target.value)}
+          placeholder="z.B. Rock Classics"
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && newPlaylistName.trim()) {
+              onCreatePlaylist(newPlaylistName.trim());
+              setShowCreatePlaylist(false);
+              setNewPlaylistName('');
+            }
+          }}
+        />
+      </Dialog>
     </aside>
   );
 }
@@ -170,14 +169,14 @@ export function AppHeader({ title, showBack, onBack, transparent = false }: {
     <header className={`top-bar-header ${transparent ? 'transparent' : ''}`}>
       <div className="flex items-center gap-2">
         {showBack ? (
-          <button onClick={onBack} className="top-bar-btn" aria-label="Zurueck">
+          <button onClick={onBack} className="top-bar-btn" aria-label="Zurück">
             <ChevronLeft className="h-5 w-5" />
           </button>
         ) : (
           <div className="w-9" />
         )}
         {!transparent && (
-          <button className="top-bar-btn" aria-label="Vorwaerts" disabled>
+          <button className="top-bar-btn" aria-label="Vorwärts" disabled>
             <ChevronLeft className="h-5 w-5 opacity-30 rotate-180" />
           </button>
         )}
@@ -196,7 +195,7 @@ export function BottomNav({ active, onChange }: {
     { id: 'home', label: 'Start', icon: <Home className="h-6 w-6" /> },
     { id: 'search', label: 'Suchen', icon: <Search className="h-6 w-6" /> },
     { id: 'library', label: 'Bibliothek', icon: <Library className="h-6 w-6" /> },
-    { id: 'profile', label: 'Profil', icon: <Heart className="h-6 w-6" /> },
+    { id: 'profile', label: 'Profil', icon: <User className="h-6 w-6" /> },
   ];
 
   return (
