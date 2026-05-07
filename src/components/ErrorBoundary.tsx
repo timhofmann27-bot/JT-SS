@@ -1,105 +1,68 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
-import { hapticFeedback } from '../lib/utils';
+import React from 'react';
+import type { ErrorInfo, ReactNode } from 'react';
 
-interface Props {
-  children: ReactNode;
-  fallback?: ReactNode;
-}
+interface Props { children: ReactNode; }
+interface State { hasError: boolean; error: Error | null; componentStack: string | null; }
 
-interface State {
-  hasError: boolean;
-  error: Error | null;
-  errorInfo: ErrorInfo | null;
-}
+export class AppErrorBoundary extends React.Component<Props, State> {
+  override state: State = { hasError: false, error: null, componentStack: null };
 
-export class ErrorBoundary extends Component<Props, State> {
-  public state: State = {
-    hasError: false,
-    error: null,
-    errorInfo: null,
-  };
-
-  public static getDerivedStateFromError(error: Error): Partial<State> {
-    return { hasError: true, error };
+  static getDerivedStateFromError(error: Error): State {
+    return { hasError: true, error, componentStack: null };
   }
 
-  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Uncaught error:', error, errorInfo);
-    this.setState({ errorInfo });
-    
-    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-      hapticFeedback('error');
-    }
+  override componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('[ErrorBoundary]', error, info.componentStack);
+    this.setState({ componentStack: info.componentStack ?? null });
   }
 
-  private handleReload = () => {
-    hapticFeedback('medium');
-    window.location.reload();
-  };
-
-  private handleGoHome = () => {
-    hapticFeedback('light');
-    window.location.href = '/';
-  };
-
-  public render() {
-    const { hasError, error } = this.state;
-    const { children, fallback } = this.props;
-
-    if (hasError) {
-      if (fallback) {
-        return fallback;
-      }
-
+  override render() {
+    if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-black text-white flex items-center justify-center p-6">
-          <div className="max-w-md w-full glass rounded-3xl p-8 text-center space-y-6">
-            <div className="w-20 h-20 bg-red-500/10 rounded-2xl flex items-center justify-center mx-auto border border-red-500/20">
-              <AlertTriangle className="w-10 h-10 text-red-400" />
-            </div>
-            
-            <div className="space-y-2">
-              <h1 className="text-2xl font-serif font-bold">Oops! Etwas ist schiefgelaufen</h1>
-              <p className="text-white/60 text-sm">
-                Wir entschuldigen uns für die Unannehmlichkeiten. Bitte versuchen Sie es erneut.
-              </p>
-            </div>
-
-            {error && (
-              <details className="text-left bg-black/40 rounded-xl p-4">
-                <summary className="text-xs text-white/40 cursor-pointer font-mono">
-                  Fehlerdetails anzeigen
-                </summary>
-                <pre className="mt-2 text-xs text-red-400 font-mono whitespace-pre-wrap">
-                  {error.toString()}
-                </pre>
-              </details>
-            )}
-
-            <div className="flex flex-col gap-3 pt-4">
-              <button
-                onClick={this.handleReload}
-                className="w-full bg-white text-black font-bold py-4 rounded-2xl flex items-center justify-center gap-2 hover:bg-white/90 transition-all active:scale-[0.98]"
-              >
-                <RefreshCw className="w-5 h-5" />
-                Seite neu laden
-              </button>
-              <button
-                onClick={this.handleGoHome}
-                className="w-full bg-white/5 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 hover:bg-white/10 transition-all active:scale-[0.98]"
-              >
-                <Home className="w-5 h-5" />
-                Zur Startseite
-              </button>
-            </div>
-          </div>
-        </div>
+        <main style={{
+          minHeight: '100svh', display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', padding: '2rem',
+          background: '#121212', color: '#fff', fontFamily: 'system-ui, sans-serif',
+          textAlign: 'center', gap: '1rem',
+        }}>
+          <div style={{
+            width: 48, height: 48, borderRadius: '50%',
+            background: '#E91429', display: 'flex', alignItems: 'center',
+            justifyContent: 'center', fontSize: '1.5rem', fontWeight: 'bold',
+          }}>!</div>
+          <h1 style={{ fontSize: '1.25rem', fontWeight: 700 }}>Etwas ist schiefgegangen</h1>
+          <p style={{ color: '#a0a0a0', fontSize: '0.875rem', maxWidth: '320px' }}>
+            Die App konnte nicht geladen werden. Bitte versuche die Seite neu zu laden.
+          </p>
+          {this.state.error && (
+            <pre style={{
+              marginTop: '1rem', padding: '1rem', background: '#282828',
+              borderRadius: 8, fontSize: '0.75rem', color: '#E91429',
+              maxWidth: '90vw', overflow: 'auto', textAlign: 'left',
+              whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+            }}>
+              {this.state.error.message}
+              {this.state.error.stack && (
+                <>{'\n\n'}{this.state.error.stack}</>
+              )}
+              {this.state.componentStack && (
+                <>{'\n\nComponent Stack:'}{this.state.componentStack}</>
+              )}
+            </pre>
+          )}
+          <button
+            onClick={() => window.location.reload()}
+            style={{
+              marginTop: '0.5rem', padding: '0.75rem 2rem', borderRadius: 999,
+              background: '#FF6B35', color: '#000', fontWeight: 700, fontSize: '0.9rem',
+              border: 'none', cursor: 'pointer',
+            }}
+          >
+            Neu laden
+          </button>
+        </main>
       );
     }
-
-    return children;
+    return this.props.children;
   }
 }
-
-export default ErrorBoundary;

@@ -1,0 +1,26 @@
+services:
+  app:
+    build: .
+    container_name: jt-ss-app
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PORT: 3001
+      MEDIA_DIR: /data/media
+      DATA_DIR: /data/state
+      VITE_API_BASE: /api
+    volumes:
+      - ./data/media:/data/media
+      - ./data/state:/data/state
+      - /tmp/youtube_cookies.txt:/tmp/youtube_cookies_src.txt:ro
+    networks:
+      - caddy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+networks:
+  caddy:
+    external: true
