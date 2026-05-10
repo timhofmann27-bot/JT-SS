@@ -9,8 +9,11 @@ import {
   Share2,
   Trash2,
   Clock,
+  ListMusic,
+  WifiOff,
 } from 'lucide-react';
-import type { ApiFile, Album, Artist } from '../types';
+import { SkeletonTrackList } from '../components/Skeleton';
+import type { ApiFile, Album, Artist, Playlist } from '../types';
 import { useContextMenu, type ContextMenuItem } from '../components/ui';
 import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 import { coverUrl } from '../lib/api';
@@ -37,6 +40,7 @@ function SwipeableTrackRow({
   onAddToQueue,
   isTouch,
   onContextMenu,
+  isOffline,
 }: {
   file: ApiFile;
   currentId: string | null;
@@ -50,6 +54,7 @@ function SwipeableTrackRow({
   onAddToQueue: (f: ApiFile) => void;
   isTouch: boolean;
   onContextMenu: (e: React.MouseEvent, f: ApiFile) => void;
+  isOffline?: boolean;
 }) {
   const dragX = useMotionValue(0);
   const leftOpacity = useTransform(dragX, [-120, -40, 0], [1, 0, 0]);
@@ -159,7 +164,11 @@ interface HomeViewProps {
   onPlayAlbum: (a: Album) => void;
   onAddToQueue: (f: ApiFile) => void;
   onDelete: (f: ApiFile) => void;
+  playlists?: Playlist[];
+  onAddToPlaylist?: (playlistId: string, file: ApiFile) => void;
+  onCreatePlaylist?: () => void;
   token?: string;
+  cachedFileIds?: Set<string>;
 }
 
 export default function HomeView({
@@ -178,7 +187,11 @@ export default function HomeView({
   onPlayAlbum,
   onAddToQueue,
   onDelete,
+  playlists,
+  onAddToPlaylist,
+  onCreatePlaylist,
   token,
+  cachedFileIds,
 }: HomeViewProps) {
   const { open: openCtx, menu: CtxMenu } = useContextMenu();
   const listContainerRef = useRef<HTMLDivElement>(null);
@@ -198,13 +211,18 @@ export default function HomeView({
     const items: ContextMenuItem[] = [
       { icon: <Play className="h-4 w-4" />, label: 'Abspielen', onClick: () => onPlay(file) },
       { icon: <ListPlus className="h-4 w-4" />, label: 'Zu Warteschlange', onClick: () => onAddToQueue(file) },
+      { icon: <ListMusic className="h-4 w-4" />, label: 'Zu Playlist hinzufuegen', onClick: () => {} },
       { divider: true, label: '', onClick: () => {} },
       { icon: <Heart className="h-4 w-4" />, label: likedIds.has(file.id) ? 'Aus Lieblingstiteln entfernen' : 'Zu Lieblingstiteln', onClick: () => onLike(file) },
       { divider: true, label: '', onClick: () => {} },
       { icon: <Share2 className="h-4 w-4" />, label: 'Teilen', onClick: () => {} },
       { icon: <Trash2 className="h-4 w-4" />, label: 'Entfernen', onClick: () => onDelete(file), danger: true },
     ];
-    openCtx(e, items, file);
+    openCtx(e, items, file, {
+      playlists,
+      onSelectPlaylist: onAddToPlaylist,
+      onCreatePlaylist,
+    });
   }
 
   return (
@@ -288,8 +306,10 @@ export default function HomeView({
                   <span className="home-section-link">Alle anzeigen</span>
                 </div>
                 <div className="home-scroll-row">
-                  {albums.slice(0, 8).map((album) => (
-                    <div key={album.id} className="home-card" onClick={() => onAlbumSelect(album)}>
+                  {albums.slice(0, 8).map((album) => {
+                    const isActive = currentFile !== null && album.tracks.some(t => t.id === currentFile.id);
+                    return (
+                    <div key={album.id} className={`home-card ${isActive ? 'is-active' : ''}`} onClick={() => onAlbumSelect(album)}>
                       <div className="home-card-cover">
                         {album.tracks[0]?.hasArtwork ? (
                           <img src={coverUrl(album.tracks[0], { token, artist: album.artist, album: album.name })} alt={album.name} className="home-card-img" />
@@ -310,7 +330,8 @@ export default function HomeView({
                       <p className="home-card-title">{album.name}</p>
                       <p className="home-card-subtitle">{album.artist || `${album.trackCount} Titel`}</p>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -336,6 +357,7 @@ export default function HomeView({
                     onAddToQueue={onAddToQueue}
                     isTouch={isTouch}
                     onContextMenu={handleTrackContext}
+                    isOffline={cachedFileIds?.has(file.id) ?? false}
                   />
                 ))}
                 {hasMoreTracks && (

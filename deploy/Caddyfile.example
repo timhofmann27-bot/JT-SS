@@ -1,0 +1,31 @@
+{$DOMAIN} {
+    encode zstd gzip
+
+    # Security headers
+    header {
+        X-Frame-Options SAMEORIGIN
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' wss: https:"
+    }
+
+    # OAuth Login for register?invite
+    @public_invite {
+        path /register*
+        path /login*
+    }
+    handle @public_invite {
+        reverse_proxy app:3001
+    }
+
+    # Everything else (SPA)
+    reverse_proxy app:3001
+    try_files {path} /index.html
+
+    # TLS - automatically managed by Caddy
+    tls {$EMAIL}
+}
+
+# HTTP to HTTPS redirect
+http_port 80
+redir http://{$DOMAIN} https://{$DOMAIN} 307

@@ -68,10 +68,16 @@ export interface QueueItem {
   file: ApiFile;
 }
 
+export interface PlayHistoryEntry {
+  fileId: string;
+  playedAt: string;
+}
+
 export interface RoomState {
   likedIds: string[];
   queue: QueueItem[];
   playlists: Playlist[];
+  playHistory: PlayHistoryEntry[];
   updatedAt: string;
 }
 

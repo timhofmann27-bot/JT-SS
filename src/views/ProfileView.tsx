@@ -128,6 +128,20 @@ export default function ProfileView({ user, token, likedCount, onLikedSongs, onL
     }
   };
 
+  const deleteMember = async (userId: string, username: string) => {
+    if (!confirm(`Mitglied "${username}" wirklich entfernen? Alle Daten gehen verloren.`)) return;
+    try {
+      await apiFetch(`/api/auth/user/${userId}`, {
+        method: 'DELETE',
+        token,
+        headers: { 'x-auth-token': token },
+      });
+      loadMembers();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Löschen fehlgeschlagen');
+    }
+  };
+
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -324,6 +338,15 @@ export default function ProfileView({ user, token, likedCount, onLikedSongs, onL
                         {m.role}
                       </span>
                     </div>
+                    {m.role !== 'admin' && (
+                      <button
+                        onClick={() => deleteMember(m.id, m.username)}
+                        className="profile-invite-delete"
+                        title="Mitglied entfernen"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
                   </div>
                 ))}
                 {members.length === 0 && !loadingMembers && (

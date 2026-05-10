@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { motion } from 'motion/react';
 import {
   Heart,
@@ -8,10 +8,14 @@ import {
   Disc3,
   Music2,
   User,
+  HardDriveDownload,
+  WifiOff,
+  Trash2,
 } from 'lucide-react';
 import type { ApiFile, Album, Artist, Playlist } from '../types';
 import { coverUrl } from '../lib/api';
-import { EmptyState } from '../components/ui';
+import { EmptyState, TrackRow } from '../components/ui';
+import { trackSubtitle } from '../lib/format';
 
 
 interface LibraryViewProps {
@@ -25,13 +29,15 @@ interface LibraryViewProps {
   albums: Album[];
   artists: Artist[];
   playlists: Playlist[];
-  filter: 'playlists' | 'artists' | 'albums';
-  setFilter: (f: 'playlists' | 'artists' | 'albums') => void;
+  filter: 'playlists' | 'artists' | 'albums' | 'offline';
+  setFilter: (f: 'playlists' | 'artists' | 'albums' | 'offline') => void;
   onAlbumSelect: (a: Album) => void;
   onArtistSelect: (a: Artist) => void;
   onPlaylistSelect: (p: Playlist) => void;
   onDelete: (f: ApiFile) => void;
+  onCreatePlaylist?: () => void;
   token?: string;
+  cachedFileIds?: Set<string>;
 }
 
 export default function LibraryView({
@@ -51,8 +57,23 @@ export default function LibraryView({
   onArtistSelect,
   onPlaylistSelect,
   onDelete,
+  onCreatePlaylist,
   token,
+  cachedFileIds,
 }: LibraryViewProps) {
+  const offlineFiles = useMemo(
+    () => files.filter((f) => cachedFileIds?.has(f.id)),
+    [files, cachedFileIds],
+  );
+
+  const filters = ['playlists', 'artists', 'albums', 'offline'] as const;
+  const filterLabels: Record<string, string> = {
+    playlists: 'Playlists',
+    artists: 'Künstler',
+    albums: 'Alben',
+    offline: 'Offline',
+  };
+
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="library-view">
       <div className="library-header">
@@ -60,18 +81,53 @@ export default function LibraryView({
       </div>
 
       <div className="library-filter">
-        {(['playlists', 'artists', 'albums'] as const).map((f) => (
+        {filters.map((f) => (
           <button
             key={f}
             className={`library-filter-btn ${filter === f ? 'is-active' : ''}`}
             onClick={() => setFilter(f)}
           >
-            {f === 'playlists' ? 'Playlists' : f === 'artists' ? 'Künstler' : 'Alben'}
+            {filterLabels[f]}
           </button>
         ))}
       </div>
 
       <div className="library-content">
+        {/* ── Offline / Heruntergeladen ── */}
+        {filter === 'offline' && (offlineFiles.length === 0 ? (
+          <EmptyState
+            icon={<HardDriveDownload className="h-10 w-10" />}
+            title="Noch keine Titel offline"
+            message={`Tippe im Player auf ⋮ → „Offline speichern", um Titel herunterzuladen.`}
+          />
+        ) : (
+          <div className="library-offline-section">
+            <div className="library-offline-header">
+              <HardDriveDownload className="h-5 w-5 text-green-400" />
+              <span>{offlineFiles.length} Titel offline verfügbar</span>
+            </div>
+            <div className="home-track-list">
+              {offlineFiles.map((file, index) => (
+                <TrackRow
+                  key={file.id}
+                  file={file}
+                  index={index}
+                  liked={likedIds.has(file.id)}
+                  currentId={currentFile?.id ?? null}
+                  isPlaying={isPlaying}
+                  token={token}
+                  onPlay={onPlay}
+                  onToggleLike={onLike}
+                  onAddToQueue={undefined}
+                  swipeToQueue
+                  isOffline
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+
+        {/* ── Playlists ── */}
         {filter === 'playlists' && (playlists.length === 0 ? (
           <EmptyState
             icon={<ListMusic className="h-10 w-10" />}
@@ -96,7 +152,7 @@ export default function LibraryView({
                 <p className="home-card-subtitle">{playlist.trackIds.length} Titel</p>
               </div>
             ))}
-            <div className="library-create-card" onClick={onOpenUpload}>
+            <div className="library-create-card" onClick={onCreatePlaylist}>
               <div className="library-create-icon">
                 <Plus className="h-8 w-8" />
               </div>
@@ -105,6 +161,7 @@ export default function LibraryView({
           </div>
         ))}
 
+        {/* ── Künstler ── */}
         {filter === 'artists' && (artists.length === 0 ? (
           <EmptyState
             icon={<User className="h-10 w-10" />}
@@ -134,6 +191,7 @@ export default function LibraryView({
           </div>
         ))}
 
+        {/* ── Alben ── */}
         {filter === 'albums' && (albums.length === 0 ? (
           <EmptyState
             icon={<Disc3 className="h-10 w-10" />}
@@ -142,8 +200,10 @@ export default function LibraryView({
           />
         ) : (
           <div className="library-grid">
-            {albums.map((album) => (
-              <div key={album.id} className="home-card" onClick={() => onAlbumSelect(album)}>
+            {albums.map((album) => {
+              const isActive = currentFile !== null && album.tracks.some(t => t.id === currentFile.id);
+              return (
+              <div key={album.id} className={`home-card ${isActive ? 'is-active' : ''}`} onClick={() => onAlbumSelect(album)}>
                 <div className="home-card-cover">
                   <img
                     src={coverUrl(album.tracks[0], { token, artist: album.tracks[0]?.artist, album: album.tracks[0]?.album })}
@@ -159,7 +219,8 @@ export default function LibraryView({
                 <p className="home-card-title">{album.name}</p>
                 <p className="home-card-subtitle">{album.artist || `${album.trackCount} Titel`}</p>
               </div>
-            ))}
+              );
+            })}
           </div>
         ))}
       </div>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   Play,
   Heart,
@@ -204,20 +204,20 @@ export function PlaylistsView({ playlists, files, onPlayPlaylist, onCreatePlayli
           {playlists.map((playlist) => (
             <motion.div
               key={playlist.id}
-              className="track-row"
+              className="list-row"
               whileHover={{ scale: 1.01 }}
               whileTap={{ scale: 0.99 }}
             >
-              <button onClick={() => onPlayPlaylist(playlist)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                <div className="cover-wrap flex h-14 w-14 shrink-0 items-center justify-center bg-soft">
-                  <Music className="h-6 w-6 text-muted" />
+              <button onClick={() => onPlayPlaylist(playlist)} className="list-row-main">
+                <div className="list-row-cover playlist-cover">
+                  <ListMusic className="h-6 w-6" />
                 </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-base font-bold">{playlist.name}</p>
-                  <p className="mt-1 truncate text-xs font-bold text-muted">{playlist.trackIds.length} Tracks</p>
+                <div className="list-row-info">
+                  <p className="list-row-title">{playlist.name}</p>
+                  <p className="list-row-meta">{playlist.trackIds.length} Tracks</p>
                 </div>
               </button>
-              <button onClick={() => onDeletePlaylist(playlist.id)} className="track-play">
+              <button onClick={() => onDeletePlaylist(playlist.id)} className="list-row-action">
                 <MoreHorizontal className="h-4 w-4" />
               </button>
             </motion.div>
@@ -253,17 +253,25 @@ export function DiscoverView({ files, likedIds, onPlay, onLike }: {
           <h3 className="font-black">Empfohlen</h3>
           <div className="space-y-2">
             {recommendations.map((file) => (
-              <motion.div key={file.id} className="track-row" whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}>
-                <button onClick={() => onPlay(file)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                  <img src={coverUrl(file)} alt="" className="h-12 w-12 rounded-lg object-cover" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold">{file.title}</p>
-                    <p className="truncate text-xs text-muted">{file.artist}</p>
-                  </div>
-                </button>
-                <button onClick={() => onLike(file)} className={`track-play ${likedIds.has(file.id) ? 'is-liked' : ''}`}>
-                  <Heart className="h-4 w-4" />
-                </button>
+              <motion.div key={file.id} className="track-row" whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }} onClick={() => onPlay(file)}>
+                <div className="track-index-cell" style={{ visibility: 'hidden' }}>
+                  <span className="track-index-num">0</span>
+                </div>
+                <img src={coverUrl(file)} alt="" className="track-row-cover" />
+                <div className="track-row-info">
+                  <p className="track-row-title">{file.title}</p>
+                  <p className="track-row-sub">{file.artist || 'Unbekannt'}</p>
+                </div>
+                <span className="track-duration-label" />
+                <div className="track-row-actions">
+                  <button
+                    className={`btn-icon like-btn ${likedIds.has(file.id) ? 'is-liked' : ''}`}
+                    onClick={(e) => { e.stopPropagation(); onLike(file); }}
+                    aria-label="Like"
+                  >
+                    <Heart className={`h-5 w-5 ${likedIds.has(file.id) ? 'fill-current' : ''}`} />
+                  </button>
+                </div>
               </motion.div>
             ))}
           </div>
@@ -275,17 +283,25 @@ export function DiscoverView({ files, likedIds, onPlay, onLike }: {
           <h3 className="font-black">Deine Favoriten</h3>
           <div className="space-y-2">
             {likedFiles.slice(0, 5).map((file) => (
-              <motion.div key={file.id} className="track-row" whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}>
-                <button onClick={() => onPlay(file)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                  <img src={coverUrl(file)} alt="" className="h-12 w-12 rounded-lg object-cover" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold">{file.title}</p>
-                    <p className="truncate text-xs text-muted">{file.artist}</p>
-                  </div>
-                </button>
-                <button onClick={() => onLike(file)} className="track-play is-liked">
-                  <Heart className="h-4 w-4" />
-                </button>
+              <motion.div key={file.id} className="track-row" whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }} onClick={() => onPlay(file)}>
+                <div className="track-index-cell" style={{ visibility: 'hidden' }}>
+                  <span className="track-index-num">0</span>
+                </div>
+                <img src={coverUrl(file)} alt="" className="track-row-cover" />
+                <div className="track-row-info">
+                  <p className="track-row-title">{file.title}</p>
+                  <p className="track-row-sub">{file.artist || 'Unbekannt'}</p>
+                </div>
+                <span className="track-duration-label" />
+                <div className="track-row-actions">
+                  <button
+                    className="btn-icon like-btn is-liked"
+                    onClick={(e) => { e.stopPropagation(); onLike(file); }}
+                    aria-label="Unlike"
+                  >
+                    <Heart className="h-5 w-5 fill-current" />
+                  </button>
+                </div>
               </motion.div>
             ))}
           </div>
@@ -600,20 +616,18 @@ export function PublicRoomsView({ sharedRooms, files, onPlay }: {
             return (
               <motion.div
                 key={room.id}
-                className="track-row"
+                className="list-row"
                 whileHover={{ scale: 1.01 }}
                 whileTap={{ scale: 0.99 }}
               >
-                <button onClick={() => tracks[0] && onPlay(tracks[0])} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                  <div className="cover-wrap h-12 w-12">
-                    <img src={coverUrl(tracks[0] as ApiFile)} alt="" className="cover-art" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-bold">{room.displayName}</p>
-                    <p className="truncate text-xs text-muted">{room.trackIds.length} Tracks • {room.followerCount} Follower</p>
+                <button onClick={() => tracks[0] && onPlay(tracks[0])} className="list-row-main">
+                  <img src={coverUrl(tracks[0] as ApiFile)} alt="" className="list-row-cover" />
+                  <div className="list-row-info">
+                    <p className="list-row-title">{room.displayName}</p>
+                    <p className="list-row-meta">{room.trackIds.length} Tracks • {room.followerCount} Follower</p>
                   </div>
                 </button>
-                <button className="icon-button">
+                <button className="list-row-action">
                   <UserPlus className="h-4 w-4" />
                 </button>
               </motion.div>
@@ -625,150 +639,264 @@ export function PublicRoomsView({ sharedRooms, files, onPlay }: {
   );
 }
 
-export function LoginView({ onLogin, error }: {
+export function LoginView({ onLogin, error, onSwitchToRegister }: {
   onLogin: (username: string, password: string) => void;
   error: string;
+  onSwitchToRegister?: () => void;
 }) {
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
+  const [showPassword, setShowPassword] = React.useState(false);
 
   return (
-    <main className="flex min-h-screen items-center justify-center px-4 py-8" style={{ background: 'linear-gradient(180deg, #0A0A0A 0%, #121212 100%)' }}>
-      <div className="w-full max-w-[420px]">
-        {/* Brand Header */}
-        <div className="mb-10 text-center">
-          <div className="mx-auto mb-5 w-16 h-16 rounded-full flex items-center justify-center shadow-lg"
-            style={{ background: 'linear-gradient(135deg, #FF6B35, #E55A2B)' }}>
-            <Music className="h-8 w-8 text-white" fill="white" />
+    <main className="login-screen">
+      {/* Animated background gradient */}
+      <div className="login-bg">
+        <div className="login-bg-orb login-bg-orb-1" />
+        <div className="login-bg-orb login-bg-orb-2" />
+        <div className="login-bg-orb login-bg-orb-3" />
+      </div>
+
+      <div className="login-container">
+        {/* Brand Hero */}
+        <motion.div
+          className="login-brand"
+          initial={{ opacity: 0, y: 30, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.6, ease: [0.32, 0.72, 0, 1] }}
+        >
+          <div className="login-logo">
+            <div className="login-logo-inner">
+              <img src="/icon.svg" alt="JT-MP3" className="login-logo-img" />
+            </div>
           </div>
-          <h1 className="text-[2rem] font-extrabold tracking-tight text-white">Anmelden</h1>
-          <p className="mt-2 text-sm text-[#a0a0a0]">Willkommen zurück bei JT-MP3</p>
-        </div>
+          <h1 className="login-title">JT-MP3</h1>
+          <p className="login-subtitle">Deine Musik. Dein Sound. Deine Regeln.</p>
+        </motion.div>
 
-        {/* Login Form */}
-        <div className="rounded-xl p-8" style={{ background: '#181818', border: '1px solid rgba(255,255,255,0.06)' }}>
-          <form onSubmit={(e) => { e.preventDefault(); onLogin(username, password); }}>
-            <div className="mb-5">
-              <label className="block text-sm font-bold text-white mb-2" htmlFor="username">Benutzername</label>
-              <input
-                id="username"
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                autoFocus
-                className="touch-input"
-                placeholder="Benutzername"
-              />
-            </div>
+        {/* Login Card */}
+        <motion.div
+          className="login-card"
+          initial={{ opacity: 0, y: 40 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.15, ease: [0.32, 0.72, 0, 1] }}
+        >
+          <div className="login-card-header">
+            <h2 className="login-card-title">Willkommen zurück</h2>
+            <p className="login-card-desc">Melde dich mit deinem Konto an</p>
+          </div>
 
-            <div className="mb-6">
-              <label className="block text-sm font-bold text-white mb-2" htmlFor="password">Passwort</label>
-              <input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="touch-input"
-                placeholder="Passwort"
-              />
-            </div>
-
-            {error && (
-              <div className="mb-4 flex items-center gap-2 rounded-lg px-3 py-2 text-sm" style={{ background: 'rgba(233,20,41,0.1)', color: '#E91429' }}>
-                <AlertCircle className="h-4 w-4 shrink-0" />
-                {error}
+          <form onSubmit={(e) => { e.preventDefault(); onLogin(username, password); }} className="login-form">
+            {/* Username */}
+            <div className="login-field">
+              <div className="login-input-wrap">
+                <User className="login-input-icon" />
+                <input
+                  id="login-username"
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  autoFocus
+                  className="login-input"
+                  placeholder="Benutzername"
+                  autoComplete="username"
+                />
               </div>
-            )}
+            </div>
 
-            <button
+            {/* Password */}
+            <div className="login-field">
+              <div className="login-input-wrap">
+                <Lock className="login-input-icon" />
+                <input
+                  id="login-password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="login-input"
+                  placeholder="Passwort"
+                  autoComplete="current-password"
+                />
+              </div>
+            </div>
+
+            {/* Error message */}
+            <AnimatePresence>
+              {error && (
+                <motion.div
+                  className="login-error"
+                  initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+                  animate={{ opacity: 1, height: 'auto', marginBottom: 16 }}
+                  exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+                >
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{error}</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Submit */}
+            <motion.button
               type="submit"
-              className="w-full h-12 rounded-full font-bold text-base flex items-center justify-center gap-2 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
-              style={{ background: 'linear-gradient(135deg, #FF6B35, #E55A2B)', color: '#000', boxShadow: '0 8px 24px rgba(255,107,53,0.3)' }}
+              className="login-submit"
+              whileHover={{ scale: 1.02, boxShadow: '0 12px 40px rgba(255,107,53,0.4)' }}
+              whileTap={{ scale: 0.98 }}
             >
-              Anmelden
-            </button>
+              <span>Anmelden</span>
+              <ChevronRight className="h-5 w-5" />
+            </motion.button>
           </form>
-        </div>
+
+          {/* Footer links */}
+          {onSwitchToRegister && (
+            <div className="login-footer">
+              <span className="login-footer-text">Noch kein Konto?</span>
+              <button onClick={onSwitchToRegister} className="login-footer-link">
+                Registrieren
+              </button>
+            </div>
+          )}
+        </motion.div>
       </div>
     </main>
   );
 }
 
-export function RegisterView({ onRegister, error, inviteCode = '' }: {
+export function RegisterView({ onRegister, error, inviteCode = '', onSwitchToLogin }: {
   onRegister: (username: string, password: string, inviteCode: string) => void;
   error: string;
   inviteCode?: string;
+  onSwitchToLogin?: () => void;
 }) {
   const [username, setUsername] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [code, setCode] = React.useState(inviteCode);
 
   return (
-    <main className="app-shell flex min-h-screen items-center justify-center px-4 py-8">
-      <div className="w-full max-w-md">
-        <div className="mb-6 flex items-center gap-3">
-          <div className="brand-mark">
-            <Music className="h-7 w-7" />
-          </div>
-          <div>
-            <p className="text-sm font-bold text-mint">StreamSync</p>
-            <h1 className="text-2xl font-black leading-tight">Registrieren</h1>
-          </div>
-        </div>
+    <main className="login-screen">
+      {/* Animated background gradient */}
+      <div className="login-bg">
+        <div className="login-bg-orb login-bg-orb-1" />
+        <div className="login-bg-orb login-bg-orb-2" />
+        <div className="login-bg-orb login-bg-orb-3" />
+      </div>
 
-        <form
-          onSubmit={(e) => { e.preventDefault(); onRegister(username, password, code); }}
-          className="surface p-5"
+      <div className="login-container">
+        {/* Brand Hero */}
+        <motion.div
+          className="login-brand"
+          initial={{ opacity: 0, y: 30, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.6, ease: [0.32, 0.72, 0, 1] }}
         >
-          <img src="/icon.svg" alt="" className="mb-5 h-20 w-20 rounded-lg object-cover" />
-          <h2 className="text-2xl font-black leading-tight">Konto erstellen</h2>
-          <p className="mt-2 text-sm leading-6 text-muted">Du brauchst einen Einladungscode.</p>
+          <div className="login-logo">
+            <div className="login-logo-inner">
+              <img src="/icon.svg" alt="JT-MP3" className="login-logo-img" />
+            </div>
+          </div>
+          <h1 className="login-title">JT-MP3</h1>
+          <p className="login-subtitle">Starte deine musikalische Reise</p>
+        </motion.div>
 
-          <label className="mb-2 mt-6 block text-sm font-bold text-muted" htmlFor="reg-username">Benutzername</label>
-          <input
-            id="reg-username"
-            type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            autoFocus
-            className="touch-input"
-            placeholder="Waehle einen Namen"
-          />
-
-          <label className="mb-2 mt-4 block text-sm font-bold text-muted" htmlFor="reg-password">Passwort</label>
-          <input
-            id="reg-password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="touch-input"
-            placeholder="Passwort"
-          />
-
-          <label className="mb-2 mt-4 block text-sm font-bold text-muted" htmlFor="invite">Einladungscode</label>
-          <div className="relative">
-            <Mail className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted" />
-            <input
-              id="invite"
-              type="text"
-              value={code}
-              onChange={(e) => setCode(e.target.value.toUpperCase())}
-              className="touch-input pl-12"
-              placeholder="EINLADUNGSCODE"
-            />
+        {/* Register Card */}
+        <motion.div
+          className="login-card"
+          initial={{ opacity: 0, y: 40 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.15, ease: [0.32, 0.72, 0, 1] }}
+        >
+          <div className="login-card-header">
+            <h2 className="login-card-title">Konto erstellen</h2>
+            <p className="login-card-desc">Du benötigst einen Einladungscode</p>
           </div>
 
-          {error && (
-            <p className="mt-3 flex items-center gap-2 text-sm text-red">
-              <AlertCircle className="h-4 w-4 shrink-0" />
-              {error}
-            </p>
-          )}
+          <form onSubmit={(e) => { e.preventDefault(); onRegister(username, password, code); }} className="login-form">
+            {/* Username */}
+            <div className="login-field">
+              <div className="login-input-wrap">
+                <User className="login-input-icon" />
+                <input
+                  id="reg-username"
+                  type="text"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  autoFocus
+                  className="login-input"
+                  placeholder="Benutzername"
+                  autoComplete="username"
+                />
+              </div>
+            </div>
 
-          <button className="primary-button mt-5 w-full">
-            Registrieren
-          </button>
-        </form>
+            {/* Password */}
+            <div className="login-field">
+              <div className="login-input-wrap">
+                <Lock className="login-input-icon" />
+                <input
+                  id="reg-password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="login-input"
+                  placeholder="Passwort"
+                  autoComplete="new-password"
+                />
+              </div>
+            </div>
+
+            {/* Invite Code */}
+            <div className="login-field">
+              <div className="login-input-wrap">
+                <Link2 className="login-input-icon" />
+                <input
+                  id="reg-invite"
+                  type="text"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.toUpperCase())}
+                  className="login-input"
+                  placeholder="Einladungscode"
+                  autoComplete="off"
+                />
+              </div>
+            </div>
+
+            {/* Error */}
+            <AnimatePresence>
+              {error && (
+                <motion.div
+                  className="login-error"
+                  initial={{ opacity: 0, height: 0, marginBottom: 0 }}
+                  animate={{ opacity: 1, height: 'auto', marginBottom: 16 }}
+                  exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+                >
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  <span>{error}</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Submit */}
+            <motion.button
+              type="submit"
+              className="login-submit"
+              whileHover={{ scale: 1.02, boxShadow: '0 12px 40px rgba(255,107,53,0.4)' }}
+              whileTap={{ scale: 0.98 }}
+            >
+              <span>Registrieren</span>
+              <ChevronRight className="h-5 w-5" />
+            </motion.button>
+          </form>
+
+          {/* Footer links */}
+          {onSwitchToLogin && (
+            <div className="login-footer">
+              <span className="login-footer-text">Bereits ein Konto?</span>
+              <button onClick={onSwitchToLogin} className="login-footer-link">
+                Anmelden
+              </button>
+            </div>
+          )}
+        </motion.div>
       </div>
     </main>
   );

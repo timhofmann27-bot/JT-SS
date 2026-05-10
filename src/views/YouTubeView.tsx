@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { Youtube, Download, Loader2, CheckCircle2, AlertCircle, Music2 } from 'lucide-react';
+import { Youtube, Download, Loader2, CheckCircle2, AlertCircle, Music2, XCircle } from 'lucide-react';
 import { motion } from 'motion/react';
 import { apiUrl } from '../lib/api';
 
@@ -15,6 +15,22 @@ export default function YouTubeView({ token }: YouTubeViewProps) {
   const [status, setStatus] = useState('');
   const [title, setTitle] = useState('');
   const [progress, setProgress] = useState(0);
+  const [totalTracks, setTotalTracks] = useState(0);
+  const [downloadedCount, setDownloadedCount] = useState(0);
+
+  const cancelDownload = useCallback(async () => {
+    if (!downloadId) return;
+    try {
+      await fetch(apiUrl(`/api/download/${downloadId}`), {
+        method: 'DELETE',
+        headers: { 'x-share-token': token },
+      });
+    } catch {}
+    setLoading(false);
+    setStatus('');
+    setDownloadId('');
+    setProgress(0);
+  }, [downloadId, token]);
 
   const startDownload = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,11 +68,15 @@ export default function YouTubeView({ token }: YouTubeViewProps) {
         setStatus(data.status);
         setTitle(data.title || '');
         setProgress(data.progress || 0);
+        if (data.totalTracks) setTotalTracks(data.totalTracks);
+        if (data.downloadedCount) setDownloadedCount(data.downloadedCount);
 
         if (data.status === 'done') {
           clearInterval(interval);
           setLoading(false);
           setUrl('');
+          // Clear file cache so next page visit shows new files
+          try { localStorage.removeItem('jt-files'); } catch {}
         }
         if (data.status === 'error') {
           clearInterval(interval);
@@ -119,6 +139,9 @@ export default function YouTubeView({ token }: YouTubeViewProps) {
                 <Loader2 className="h-6 w-6 animate-spin text-brand" />
                 <div className="yt-status-info">
                   <p className="yt-status-title">{title || 'Download läuft...'}</p>
+                  {totalTracks > 0 && (
+                    <p className="yt-status-track-count">{Math.min(downloadedCount + 1, totalTracks)} / {totalTracks} Titel</p>
+                  )}
                   <div className="yt-progress-bar">
                     <div
                       className="yt-progress-fill"
@@ -127,6 +150,9 @@ export default function YouTubeView({ token }: YouTubeViewProps) {
                   </div>
                   <p className="yt-status-pct">{progress}%</p>
                 </div>
+                <button onClick={cancelDownload} className="yt-cancel-btn" title="Abbrechen">
+                  <XCircle className="h-5 w-5" />
+                </button>
               </div>
             )}
 
@@ -136,6 +162,9 @@ export default function YouTubeView({ token }: YouTubeViewProps) {
                 <div className="yt-status-info">
                   <p className="yt-status-title">Download wird gestartet...</p>
                 </div>
+                <button onClick={cancelDownload} className="yt-cancel-btn" title="Abbrechen">
+                  <XCircle className="h-5 w-5" />
+                </button>
               </div>
             )}
 

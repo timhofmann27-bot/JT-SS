@@ -9,7 +9,7 @@ interface RouteState {
 }
 
 function parseHash(hash: string): RouteState {
-  const clean = hash.replace(/^#\/?/, '') || 'home';
+  const clean = hash.replace(/^#\/?/, '').split('?')[0] || 'home';
   const parts = clean.split('/').filter(Boolean);
 
   if (parts[0] === 'album' && parts[1]) {

@@ -18,7 +18,6 @@ import {
   Youtube,
   Sparkles,
   User,
-  Heart,
 } from 'lucide-react';
 import type { NavTab, ApiFile } from '../types';
 import { coverUrl } from '../lib/api';
@@ -32,12 +31,10 @@ interface SidebarProps {
   onPlaylistSelect: (id: string) => void;
   likedCount: number;
   onLikedSongs: () => void;
+  onCreatePlaylist: () => void;
 }
 
-export function Sidebar({ activeTab, onTabChange, onUpload, playlists, onPlaylistSelect, likedCount, onLikedSongs }: SidebarProps) {
-  const [showCreatePlaylist, setShowCreatePlaylist] = useState(false);
-  const [newPlaylistName, setNewPlaylistName] = useState('');
-
+export function Sidebar({ activeTab, onTabChange, onUpload, playlists, onPlaylistSelect, likedCount, onLikedSongs, onCreatePlaylist }: SidebarProps) {
   const mainNavItems: { id: NavTab; label: string; icon: React.ReactNode }[] = [
     { id: 'home', label: 'Start', icon: <Home className="sidebar-item-icon" /> },
     { id: 'search', label: 'Suchen', icon: <Search className="sidebar-item-icon" /> },
@@ -50,7 +47,7 @@ export function Sidebar({ activeTab, onTabChange, onUpload, playlists, onPlaylis
       <div className="sidebar-top">
         <a href="#" className="sidebar-logo" onClick={(e) => { e.preventDefault(); onTabChange('home'); }}>
           <div className="sidebar-logo-icon">
-            <Disc3 className="h-5 w-5 text-black" />
+            <img src="/icon.svg" alt="JT-MP3" className="sidebar-logo-img" />
           </div>
           <span className="sidebar-logo-text">JT-MP3</span>
         </a>
@@ -86,7 +83,7 @@ export function Sidebar({ activeTab, onTabChange, onUpload, playlists, onPlaylis
             <span className="sidebar-count">{likedCount}</span>
           </button>
 
-          <button className="sidebar-item w-full" onClick={() => setShowCreatePlaylist(true)}>
+          <button className="sidebar-item w-full" onClick={onCreatePlaylist}>
             <div className="sidebar-item-icon w-6 h-6 rounded-sm bg-[#282828] flex items-center justify-center">
               <Plus className="h-4 w-4 text-[#b3b3b3]" />
             </div>
@@ -130,52 +127,6 @@ export function Sidebar({ activeTab, onTabChange, onUpload, playlists, onPlaylis
           <span>KI Studio</span>
         </button>
       </div>
-
-      {/* Create Playlist Form */}
-      {showCreatePlaylist && (
-        <div className="sidebar-create-form">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-semibold">Neue Playlist</span>
-            <button onClick={() => setShowCreatePlaylist(false)} className="text-muted hover:text-text">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-          <input
-            type="text"
-            value={newPlaylistName}
-            onChange={(e) => setNewPlaylistName(e.target.value)}
-            placeholder="Playlist-Name"
-            className="sidebar-input"
-            autoFocus
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && newPlaylistName.trim()) {
-                setShowCreatePlaylist(false);
-                setNewPlaylistName('');
-              }
-              if (e.key === 'Escape') {
-                setShowCreatePlaylist(false);
-                setNewPlaylistName('');
-              }
-            }}
-          />
-          <div className="flex gap-2">
-            <button
-              onClick={() => {
-                if (newPlaylistName.trim()) {
-                  setShowCreatePlaylist(false);
-                  setNewPlaylistName('');
-                }
-              }}
-              className="sidebar-btn-primary"
-            >
-              Erstellen
-            </button>
-            <button onClick={() => setShowCreatePlaylist(false)} className="sidebar-btn-secondary">
-              Abbrechen
-            </button>
-          </div>
-        </div>
-      )}
     </aside>
   );
 }

@@ -12,6 +12,9 @@ interface MediaSessionActions {
   onPause: () => void;
   onPrev: () => void;
   onNext: () => void;
+  onSeekBackward?: () => void;
+  onSeekForward?: () => void;
+  onStop?: () => void;
 }
 
 export function useMediaSession(
@@ -45,6 +48,9 @@ export function useMediaSession(
       ['pause', () => actions.onPause()],
       ['previoustrack', () => actions.onPrev()],
       ['nexttrack', () => actions.onNext()],
+      ['seekbackward', () => actions.onSeekBackward?.()],
+      ['seekforward', () => actions.onSeekForward?.()],
+      ['stop', () => actions.onStop?.()],
     ];
 
     for (const [action, handler] of handlers) {

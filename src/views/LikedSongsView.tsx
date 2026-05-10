@@ -3,12 +3,15 @@ import { motion } from 'motion/react';
 import {
   Heart,
   Play,
+  HardDriveDownload,
+  Loader2,
+  CheckCircle2,
 } from 'lucide-react';
 import type { ApiFile } from '../types';
-import { EmptyState } from '../components/ui';
+import { EmptyState, TrackRow } from '../components/ui';
+import { SkeletonTrackList } from '../components/Skeleton';
 import { formatTime } from '../lib/format';
 import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
-import { coverUrl } from '../lib/api';
 
 
 interface LikedSongsViewProps {
@@ -19,7 +22,12 @@ interface LikedSongsViewProps {
   onPlay: (f: ApiFile) => void;
   onLike: (f: ApiFile) => void;
   onDelete: (f: ApiFile) => void;
+  onAddToQueue: (f: ApiFile) => void;
   token?: string;
+  cachedFileIds?: Set<string>;
+  onDownloadAllOffline?: () => void;
+  batchDownloading?: boolean;
+  batchDownloadDone?: boolean;
 }
 
 export default function LikedSongsView({
@@ -30,7 +38,12 @@ export default function LikedSongsView({
   onPlay,
   onLike,
   onDelete,
+  onAddToQueue,
   token,
+  cachedFileIds,
+  onDownloadAllOffline,
+  batchDownloading,
+  batchDownloadDone,
 }: LikedSongsViewProps) {
   const totalDuration = likedFiles.reduce((acc, f) => acc + (f.duration || 0), 0);
 
@@ -54,6 +67,25 @@ export default function LikedSongsView({
             <button onClick={() => likedFiles[0] && onPlay(likedFiles[0])} className="detail-play-btn">
               <Play className="h-6 w-6 fill-current" />
             </button>
+            {onDownloadAllOffline && likedFiles.length > 0 && (
+              <button
+                onClick={onDownloadAllOffline}
+                disabled={batchDownloading}
+                className={`detail-secondary-btn ${batchDownloadDone ? 'is-done' : ''}`}
+                title="Alle Lieblingstitel offline speichern"
+              >
+                {batchDownloading ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : batchDownloadDone ? (
+                  <CheckCircle2 className="h-5 w-5 text-green-400" />
+                ) : (
+                  <HardDriveDownload className="h-5 w-5" />
+                )}
+                <span className="detail-secondary-label">
+                  {batchDownloading ? 'Speichere...' : batchDownloadDone ? 'Fertig!' : 'Alle offline'}
+                </span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -64,28 +96,24 @@ export default function LikedSongsView({
         ) : (
           <div className="home-track-list">
             {visibleTracks.map((file, index) => (
-              <div key={file.id} className={`home-track-item ${currentFile?.id === file.id ? 'is-playing' : ''}`} onClick={() => onPlay(file)}>
-                <div className="home-track-index">
-                  {currentFile?.id === file.id && isPlaying ? (
-                    <div className="home-eq-bars"><span /><span /><span /></div>
-                  ) : (
-                    <span className="home-track-number retro-mono">{index + 1}</span>
-                  )}
-                </div>
-                <img src={coverUrl(file, { token, artist: file?.artist, album: file?.album })} alt="" className="home-track-cover" />
-                <div className="home-track-info">
-                  <p className="home-track-title">{file.title}</p>
-                  <p className="home-track-artist">{file.artist || 'Unbekannt'}</p>
-                </div>
-                <button className={`home-track-like ${likedIds.has(file.id) ? 'is-liked' : ''}`} onClick={(e) => { e.stopPropagation(); onLike(file); }}>
-                  <Heart className={`h-5 w-5 ${likedIds.has(file.id) ? 'fill-current' : ''}`} />
-                </button>
-                <span className="home-track-duration">{file.durationLabel || '0:00'}</span>
-              </div>
+              <TrackRow
+                key={file.id}
+                file={file}
+                index={index}
+                liked={likedIds.has(file.id)}
+                currentId={currentFile?.id ?? null}
+                isPlaying={isPlaying}
+                token={token}
+                onPlay={onPlay}
+                onToggleLike={onLike}
+                onAddToQueue={onAddToQueue}
+                swipeToQueue
+                isOffline={cachedFileIds?.has(file.id) ?? false}
+              />
             ))}
             {hasMoreTracks && (
               <div ref={trackObserverRef} className="infinite-scroll-sentinel">
-                <div className="loading-spinner" />
+                <SkeletonTrackList count={3} />
               </div>
             )}
           </div>

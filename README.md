@@ -1,6 +1,6 @@
-# JT Orga
+# JT-MP3 (StreamSync)
 
-JT Orga ist eine interne Event-Management- und Teilnehmer-Organisationsplattform für den JT (Junge T"atige / Verein). Die App verwaltet Events, Einladungen, Teilnehmer-R"uckmeldungen, Mitbringlisten, Umfragen und ein Benachrichtigungssystem – alles in einer sicheren, mobil-optimierten Webanwendung.
+Persönlicher Musik-Streaming-Server mit YouTube-Download, KI-Musikgenerierung und Web-Player. Lade deine eigene Musik hoch, streame sie von überall und lade Songs direkt von YouTube herunter.
 
 ## Tech Stack
 
@@ -8,112 +8,98 @@ JT Orga ist eine interne Event-Management- und Teilnehmer-Organisationsplattform
 |-------|-------------|
 | Frontend | React 19, TypeScript, Tailwind CSS v4, Vite |
 | Backend | Express.js, Node.js (mit `--experimental-strip-types`) |
-| Datenbank | SQLite (better-sqlite3) mit WAL-Modus |
-| Auth | JWT (HttpOnly-Cookies), bcryptjs, Account-Lockout |
-| OAuth | Google Identity Services (GIS) |
-| Maps | Leaflet / OpenStreetMap |
-| Charts | Recharts |
+| Daten | JSON-Dateien (`data/state.json`, `data/users.json`) |
+| Auth | JWT (x-auth-token / x-share-token), bcryptjs |
+| Downloads | yt-dlp (YouTube) |
+| KI-Musik | ACE Music API |
+| Container | Docker, Caddy Reverse Proxy |
 
 ## Features
 
-- **Event-Management:** Erstellen, Bearbeiten, Archivieren von Aktionen
-- **Einladungen:** Token-basierte Einladungen mit individuellen Links
-- **Teilnehmer:** R"uckmeldungen (Ja/Nein/Vielleicht), G"aste, Kommentare
-- **Mitbringlisten:** Gemeinsame Checklisten mit Claim-Funktion
-- **Umfragen:** Mehrfachauswahl-Umfragen pro Event
-- **Nachrichten:** Event-Chat (Admin + Mitglieder) mit XSS-Schutz
-- **Benachrichtigungen:** Internes Notification-System f"ur Admins und Mitglieder
-- **Registrierung:** Anfrage-Workflow mit Admin-Genehmigung und Code
-- **Google Login:** Alternativer Login f"ur Mitglieder ohne Passwort
-- **Statistiken:** Teilnehmerquoten, Event-Auswertungen, Archiv
-- **Wetter:** Open-Meteo-Integration f"ur Event-Standorte
-- **Route:** "Offentliche-Verkehrs-Routenplanung (Leaflet)
+- **Musik-Streaming:** Eigene MP3/FLAC/WAV/AAC/M4A/OGG-Dateien streamen
+- **Album- & Artist-Ansichten:** Automatische Gruppierung aus ID3-Tags
+- **YouTube-Downloader:** Songs/Playlists direkt von YouTube in die Library laden (via yt-dlp)
+- **KI-Musikgenerierung:** Songs per Text-Prompt mit ACE Music API erstellen
+- **Cover-Art:** Automatisch aus ID3-Tags oder iTunes API (gecached)
+- **Queue & Likes:** Warteschlange verwalten, Favoriten markieren
+- **Upload:** Dateien per Web-UI hochladen
+- **Auth-System:** Einladungscodes, Admin/Member-Rollen
+- **PWA:** Installierbar auf dem Handy, Media Session API, Wake Lock
+- **SSE:** Echtzeit-Updates an alle verbundenen Clients
 
 ## Lokale Entwicklung
-
-**Voraussetzungen:** Node.js 20+
 
 ```bash
 # 1. Dependencies installieren
 npm install
 
-# 2. Umgebungsvariablen konfigurieren
-# Kopiere .env.example nach .env.local und f"ulle aus:
-# - JWT_SECRET (min. 32 zuf"allige Zeichen!)
-# - VITE_GOOGLE_CLIENT_ID (optional, f"ur Google Login)
-# - GEMINI_API_KEY (optional)
+# 2. .env konfigurieren
+cp .env.example .env
+# Pflichfelder ausfüllen:
+#   ADMIN_SECRET, SHARE_TOKEN, JWT_SECRET
 
-# 3. Entwicklungsserver starten
+# 3. Dev-Server starten
 npm run dev
-# Server l"auft auf http://localhost:3000
+# Server läuft auf http://localhost:3001
 ```
 
-## Produktions-Deploy
+## Docker Deployment
 
 ```bash
-# 1. Build
-npm run build
-
-# 2. Datenbank sichern (vor jedem Update!)
-node scripts/backup-db.js
-
-# 3. Server starten
-npm start
+docker compose up -d --build
 ```
 
-### Wichtige Sicherheitshinweise f"ur Production
+Läuft auf Port 3001, via Caddy (externes Netzwerk `caddy`) unter `jt-mp3.pro`.
 
-- **JWT_SECRET** muss ein starkes, zuf"alliges Secret sein (niemals `test123` verwenden!)
-- **NODE_ENV=production** setzen
-- `.env.local` niemals ins Git committen (ist bereits in `.gitignore`)
-- HTTPS erforderlich (Cookies sind `secure: true`)
+### Umgebungsvariablen
+
+| Variable | Pflicht | Beschreibung |
+|----------|---------|--------------|
+| `ADMIN_SECRET` | Ja | Master-Secret für initiale Admin-Erstellung |
+| `SHARE_TOKEN` | Ja | Statischer Token für API-Zugriff |
+| `JWT_SECRET` | Nein | JWT-Signing-Key (wird sonst zufällig generiert) |
+| `JWT_EXPIRY` | Nein | Token-Gültigkeit (Default: `24h`) |
+| `PORT` | Nein | Server-Port (Default: `3001`) |
+| `MEDIA_DIR` | Nein | Musik-Verzeichnis (Default: `./media`) |
+| `DATA_DIR` | Nein | Daten-Verzeichnis (Default: `./data`) |
+| `MAX_UPLOAD_SIZE` | Nein | Upload-Limit (Default: `100MB`) |
+| `ROOM_NAME` | Nein | Anzeigename (Default: `StreamSync`) |
 
 ## Projektstruktur
 
 ```
+server/
+  index.ts          # Express-Server (API, Auth, Streaming, Upload)
 src/
-  api/              # Express-API (modularisiert)
-    index.ts        # Router-Zusammensetzung
-    middleware.ts   # Auth, Rate-Limiting
-    schemas.ts      # Zod-Validierung
-    routes/
-      auth.ts       # Admin-Auth
-      admin.ts      # Admin-Endpunkte
-      public.ts     # Public-Endpunkte + Google OAuth
-  components/       # React-Komponenten
-    event-details/  # EventDetails-Subkomponenten
-    public-invite/  # PublicInvite-Subkomponenten
-  db/
-    index.ts        # SQLite-Initialisierung + Migrationen
-  lib/              # Hilfsfunktionen
-  pages/            # Route-Pages
-scripts/
-  backup-db.js      # Datenbank-Backup
+  App.tsx           # Haupt-App-Komponente (Player, State, Routing)
+  views/            # Views: Home, Search, Library, YouTube, AI Studio
+  components/       # UI-Komponenten: Player, Layout, Queue
+  hooks/            # Custom Hooks: PWA, MediaSession, WakeLock, Swipe
+  lib/              # Utilities: API, Format, Theme, IndexedDB
+data/
+  media/            # Musikdateien (gemountet im Container)
+  state/            # Runtime-Daten (state.json, users.json, filecache.json)
 ```
-
-## Datenbank-Migrationen
-
-Migrationen werden automatisch beim Server-Start in `src/db/index.ts` ausgef"uhrt (idempotent via `try/catch`). Neue Spalten:
-- `person_id` in `admin_users`
-- `failed_login_attempts`, `locked_until` in `admin_users` + `persons`
-- `meeting_point`, `is_archived`, `type` in `events`
-- `username`, `email`, `password_hash`, `avatar_url` in `persons`
-- `google_id`, `google_email` in `persons` (f"ur OAuth)
 
 ## API-Endpunkte
 
 | Pfad | Auth | Beschreibung |
 |------|------|--------------|
-| `/api/auth/login` | - | Admin-Login |
-| `/api/public/login` | - | Mitglied-Login |
-| `/api/public/auth/google` | - | Google OAuth Login |
-| `/api/admin/events` | Admin | CRUD Events |
-| `/api/admin/persons` | Admin | CRUD Personen |
-| `/api/admin/stats` | Admin | Statistiken |
-| `/api/public/dashboard` | Mitglied | Einladungen |
-| `/api/public/invite/:token` | - | "Offentliche Event-Seite |
-| `/api/public/notifications` | Mitglied | Benachrichtigungen |
-
-## Lizenz
-
-Interne Software – Alle Rechte vorbehalten.
+| `/api/status` | Token | Server-Status |
+| `/api/files` | Token | Dateiliste |
+| `/api/state` | Token | Liked-Queue-State |
+| `/api/stream/:id` | Token | Audio-Streaming (Range-Support) |
+| `/api/cover/:id` | Token | Cover-Art (ID3-Tag oder generiert) |
+| `/api/album-cover` | Token | iTunes Cover-Art Fetcher |
+| `/api/upload` | Token | Datei-Upload |
+| `/api/likes/:id` | Token | Like/Unlike |
+| `/api/queue` | Token | Queue CRUD |
+| `/api/events` | Token | SSE Event-Stream |
+| `/api/download` | Token | YouTube-Download |
+| `/api/download/:id` | Token | Download-Status |
+| `/api/generate` | Token | KI-Musikgenerierung |
+| `/api/auth/login` | - | Login |
+| `/api/auth/register` | - | Registrierung (Invite-Code) |
+| `/api/auth/me` | User | Eigenes Profil |
+| `/api/auth/invite` | Admin | Einladungscode erstellen |
+| `/api/health` | - | Healthcheck |

@@ -8,6 +8,7 @@ import {
 import type { ApiFile, Artist } from '../types';
 import { hueFromString } from '../lib/format';
 import { coverUrl } from '../lib/api';
+import { TrackRow } from '../components/ui';
 
 
 interface ArtistDetailViewProps {
@@ -21,6 +22,7 @@ interface ArtistDetailViewProps {
   onDelete: (f: ApiFile) => void;
   onAddToQueue: (f: ApiFile) => void;
   token?: string;
+  cachedFileIds?: Set<string>;
 }
 
 export default function ArtistDetailView({
@@ -34,6 +36,7 @@ export default function ArtistDetailView({
   onDelete,
   onAddToQueue,
   token,
+  cachedFileIds,
 }: ArtistDetailViewProps) {
   const hue = hueFromString(artist.name);
 
@@ -61,34 +64,22 @@ export default function ArtistDetailView({
       <div className="detail-content">
         <h2 className="detail-section-title">Beliebte Titel</h2>
         <div className="home-track-list">
-          {artist.topTracks.map((file, index) => {
-            const isLiked = likedIds?.has(file.id) ?? false;
-            const fileCover = coverUrl(file, { token, artist: file.artist, album: file.album });
-            return (
-              <div key={file.id} className={`home-track-item ${currentFile?.id === file.id ? 'is-playing' : ''}`} onClick={() => onPlay(file)}>
-                <div className="home-track-index">
-                  {currentFile?.id === file.id && isPlaying ? (
-                    <div className="home-eq-bars"><span /><span /><span /></div>
-                  ) : (
-                    <span className="home-track-number retro-mono">{index + 1}</span>
-                  )}
-                </div>
-                <img className="home-track-cover" src={fileCover} alt="" loading="lazy" />
-                <div className="home-track-info">
-                  <p className="home-track-title">{file.title}</p>
-                  {file.album && <p className="home-track-artist">{file.album}</p>}
-                </div>
-                <button
-                  className={`home-track-like ${isLiked ? 'is-liked' : ''}`}
-                  onClick={(e) => { e.stopPropagation(); onLike(file); }}
-                  title={isLiked ? 'Aus Favoriten entfernen' : 'Zu Favoriten hinzufügen'}
-                >
-                  <Heart className={`h-4 w-4 ${isLiked ? 'fill-current' : ''}`} />
-                </button>
-                <span className="home-track-duration">{file.durationLabel || '0:00'}</span>
-              </div>
-            );
-          })}
+          {artist.topTracks.map((file, index) => (
+            <TrackRow
+              key={file.id}
+              file={file}
+              index={index}
+              liked={likedIds?.has(file.id) ?? false}
+              currentId={currentFile?.id ?? null}
+              isPlaying={isPlaying}
+              token={token}
+              onPlay={onPlay}
+              onToggleLike={onLike}
+              onAddToQueue={onAddToQueue}
+              swipeToQueue
+              isOffline={cachedFileIds?.has(file.id) ?? false}
+            />
+          ))}
         </div>
 
         {artist.albums.length > 0 && (
